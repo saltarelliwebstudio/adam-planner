@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import ChatAgent from '@/components/ChatAgent'
 import { Task, ViewMode } from '@/lib/types'
 import { getBlocksForDay, getFreeHours, DAY_NAMES, DAY_SHORT } from '@/lib/schedule'
 import {
@@ -604,6 +605,7 @@ export default function Home() {
       {view === 'log' && <LogView tasks={tasks} />}
 
       <NavBar view={view} setView={setView} />
+      <ChatAgent onScheduleChange={refresh} />
 
       {showAdd && <AddTaskModal date={today()} onAdd={handleAdd} onClose={() => setShowAdd(false)} />}
     </main>
