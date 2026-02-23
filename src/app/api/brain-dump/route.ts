@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 
 export async function POST(req: NextRequest) {
   try {
-    const { transcript, today, existingTasks, schedule } = await req.json()
+    const { transcript, today, next7days, existingTasks, schedule } = await req.json()
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) {
@@ -21,6 +21,8 @@ export async function POST(req: NextRequest) {
 
 TODAY: ${today}
 Day: ${new Date(today + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' })}
+Timezone: America/Toronto (Eastern Time)
+Next 7 days: ${next7days || 'not provided'}
 
 ADAM'S FIXED SCHEDULE FOR TODAY:
 ${schedule.map((b: { start: string; end: string; label: string; locked: boolean }) => `${b.start}-${b.end}: ${b.label}${b.locked ? ' (LOCKED - cannot move)' : ' (free block)'}`).join('\n')}
@@ -50,6 +52,16 @@ Parse this brain dump into organized tasks. For each item:
 4. Schedule it on the right date in a FREE block (never overlap locked blocks)
 5. If there's a time conflict with existing tasks or locked schedule, flag it
 
+IMPORTANT DATE RULES:
+- "today" = ${today}
+- "tomorrow" = the day after ${today}
+- "Monday" = the NEXT Monday from today's date. Use the next 7 days list to find the exact date.
+- "this week" = remaining days this week
+- "next week" = the following week
+- Always output dates as YYYY-MM-DD. NEVER get the date wrong.
+
+If something is ambiguous (unclear time, unclear date, unclear what Adam means), add it to the "questions" array so he can clarify.
+
 Return ONLY valid JSON (no markdown, no code fences):
 {
   "items": [
@@ -64,6 +76,7 @@ Return ONLY valid JSON (no markdown, no code fences):
     }
   ],
   "conflicts": ["Global scheduling conflict descriptions"],
+  "questions": ["Things that were unclear — ask Adam to clarify"],
   "summary": "Brief summary: 'Got it — X tasks organized. [any key notes]'"
 }`
       }]

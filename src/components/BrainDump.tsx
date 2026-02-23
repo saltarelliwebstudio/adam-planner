@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from 'react'
 import { addTask, getTasks, today } from '@/lib/store'
 import { getBlocksForDay } from '@/lib/schedule'
 
+function cn(...c: (string | false | undefined)[]) { return c.filter(Boolean).join(' ') }
+
 interface ParsedItem {
   title: string
   priority: 'high' | 'medium' | 'low'
@@ -18,6 +20,7 @@ interface ParsedItem {
 interface ParseResult {
   items: ParsedItem[]
   conflicts: string[]
+  questions: string[]
   summary: string
 }
 
@@ -33,13 +36,14 @@ function fmtDate(d: string) {
 }
 
 const CAT_EMOJI: Record<string, string> = {
-  business: '💼', client: '🤝', school: '📚', personal: '🏠', health: '💪'
+  business: '💼', client: '🤝', school: '📚', personal: '🏠', health: '💪',
 }
 
 export default function BrainDump({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState<'idle' | 'listening' | 'processing' | 'review' | 'saving'>('idle')
   const [transcript, setTranscript] = useState('')
   const [result, setResult] = useState<ParseResult | null>(null)
+  const [editingIdx, setEditingIdx] = useState<number | null>(null)
   const [duration, setDuration] = useState(0)
   const recognitionRef = useRef<SpeechRecognition | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
@@ -62,7 +66,6 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
     let processedUpTo = 0
     let finalText = ''
     r.onresult = (e: SpeechRecognitionEvent) => {
-      // Only process new results to avoid duplication
       let newFinal = ''
       let interim = ''
       for (let i = processedUpTo; i < e.results.length; i++) {
@@ -100,10 +103,22 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
   async function processTranscript() {
     setStep('processing')
 
+    // Get today in Toronto timezone
     const todayDate = today()
-    const dayOfWeek = new Date(todayDate + 'T12:00:00').getDay()
+    const todayDt = new Date(todayDate + 'T12:00:00')
+    const dayOfWeek = todayDt.getDay()
     const blocks = getBlocksForDay(dayOfWeek)
     const existingTasks = getTasks().filter(t => t.status !== 'done')
+
+    // Build next 7 days for context
+    const next7 = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(todayDt)
+      d.setDate(d.getDate() + i)
+      const ds = d.toISOString().split('T')[0]
+      const dow = d.getDay()
+      const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dow]
+      return `${ds} (${dayName})`
+    }).join(', ')
 
     try {
       const res = await fetch('/api/brain-dump', {
@@ -112,6 +127,7 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
         body: JSON.stringify({
           transcript: transcript.trim(),
           today: todayDate,
+          next7days: next7,
           existingTasks: existingTasks.map(t => ({
             title: t.title,
             scheduledDate: t.scheduledDate,
@@ -127,10 +143,11 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
       if (data.items) {
         data.items = data.items.map(item => ({ ...item, approved: true }))
       }
+      if (!data.questions) data.questions = []
       setResult(data)
       setStep('review')
     } catch {
-      setResult({ items: [], conflicts: ['Failed to process. Try again.'], summary: '' })
+      setResult({ items: [], conflicts: ['Failed to process. Try again.'], questions: [], summary: '' })
       setStep('review')
     }
   }
@@ -168,9 +185,21 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
     setResult({ ...result, items })
   }
 
+  function updateItem(idx: number, field: string, value: string) {
+    if (!result) return
+    const items = [...result.items]
+    items[idx] = { ...items[idx], [field]: value }
+    setResult({ ...result, items })
+  }
+
+  function removeItem(idx: number) {
+    if (!result) return
+    setResult({ ...result, items: result.items.filter((_, i) => i !== idx) })
+    setEditingIdx(null)
+  }
+
   const pad = (n: number) => n.toString().padStart(2, '0')
 
-  // Floating button
   if (!isOpen) {
     return (
       <button onClick={() => setIsOpen(true)}
@@ -182,7 +211,6 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[var(--bg)]">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
         <div>
           <h2 className="font-bold text-lg">Brain Dump</h2>
@@ -216,13 +244,11 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
             </div>
             <p className="text-2xl font-mono font-bold text-[var(--accent)]">{pad(Math.floor(duration / 60))}:{pad(duration % 60)}</p>
             <p className="text-sm text-[var(--text-muted)]">Listening... just talk naturally</p>
-            
             <div className="w-full bg-[var(--card)] rounded-xl p-4 max-h-48 overflow-y-auto">
               <p className="text-[15px] leading-relaxed">
                 {transcript || <span className="text-[var(--text-muted)] italic">Waiting for speech...</span>}
               </p>
             </div>
-
             <button onClick={stopAndProcess}
               className="w-full py-4 rounded-2xl bg-[var(--success)] text-white font-bold text-lg active:scale-95">
               ✅ Done — Organize It
@@ -236,15 +262,12 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
             <div className="text-5xl animate-bounce">🧠</div>
             <h3 className="text-lg font-bold">Organizing your brain dump...</h3>
             <p className="text-sm text-[var(--text-muted)] text-center">
-              Figuring out priorities, checking your schedule for conflicts, slotting things in...
+              Figuring out priorities, checking for conflicts, slotting things in...
             </p>
-            <div className="w-full bg-[var(--card)] rounded-xl p-3 max-h-24 overflow-y-auto mt-4">
-              <p className="text-xs text-[var(--text-muted)]">&ldquo;{transcript.slice(0, 150)}{transcript.length > 150 ? '...' : ''}&rdquo;</p>
-            </div>
           </div>
         )}
 
-        {/* Review */}
+        {/* Review — EDITABLE */}
         {step === 'review' && result && (
           <div className="space-y-4">
             {/* Summary */}
@@ -254,58 +277,119 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
               </div>
             )}
 
+            {/* AI Questions — things it needs clarity on */}
+            {result.questions && result.questions.length > 0 && (
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+                <h3 className="text-sm font-bold text-blue-400 mb-2">❓ Quick Questions</h3>
+                {result.questions.map((q, i) => (
+                  <p key={i} className="text-sm text-[var(--text-muted)] py-0.5">• {q}</p>
+                ))}
+                <p className="text-xs text-[var(--text-muted)] mt-2 italic">Edit the tasks below to fix, or redo the brain dump with more detail.</p>
+              </div>
+            )}
+
             {/* Conflicts */}
             {result.conflicts && result.conflicts.length > 0 && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
-                <h3 className="text-sm font-bold text-red-400 mb-2">⚠️ Scheduling Conflicts</h3>
+                <h3 className="text-sm font-bold text-red-400 mb-2">⚠️ Conflicts</h3>
                 {result.conflicts.map((c, i) => (
                   <p key={i} className="text-sm text-[var(--text-muted)] py-0.5">• {c}</p>
                 ))}
               </div>
             )}
 
-            {/* Items */}
+            {/* Items — tap to edit */}
             <h3 className="text-sm font-semibold text-[var(--text-muted)]">
-              {result.items.length} TASKS FOUND — tap to deselect
+              {result.items.length} TASKS — tap to edit, uncheck to skip
             </h3>
-            {result.items.map((item, i) => (
-              <div key={i} onClick={() => toggleItem(i)}
-                className={`bg-[var(--card)] rounded-xl p-4 transition-all cursor-pointer ${
-                  !item.approved ? 'opacity-40' : ''
-                }`}>
-                <div className="flex items-start gap-3">
-                  <div className={`w-6 h-6 rounded-full border-2 flex-shrink-0 flex items-center justify-center mt-0.5 ${
-                    item.approved ? 'border-[var(--accent)] bg-[var(--accent)]/20' : 'border-[var(--border)]'
-                  }`}>
-                    {item.approved && <span className="text-xs text-[var(--accent)]">✓</span>}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-[15px] font-medium">{item.title}</p>
-                    <div className="flex flex-wrap gap-2 mt-1.5">
-                      <span className="text-xs text-[var(--text-muted)]">
-                        📅 {fmtDate(item.scheduledDate)}
-                      </span>
-                      {item.scheduledTime && (
-                        <span className="text-xs text-[var(--text-muted)]">
-                          🕐 {fmt12(item.scheduledTime)}
-                        </span>
-                      )}
-                      <span className="text-xs">
-                        {CAT_EMOJI[item.category] || '📌'} {item.category}
-                      </span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                        item.priority === 'high' ? 'bg-red-500/20 text-red-400' :
-                        item.priority === 'medium' ? 'bg-amber-500/20 text-amber-400' :
-                        'bg-emerald-500/20 text-emerald-400'
-                      }`}>{item.priority}</span>
+            {result.items.map((item, i) => {
+              const isEditing = editingIdx === i
+              return (
+                <div key={i} className={cn(
+                  'bg-[var(--card)] rounded-xl overflow-hidden transition-all',
+                  !item.approved && 'opacity-40'
+                )}>
+                  {/* Header row — always visible */}
+                  <div className="flex items-start gap-3 p-4">
+                    {/* Checkbox */}
+                    <button onClick={(e) => { e.stopPropagation(); toggleItem(i) }} className="flex-shrink-0 mt-0.5">
+                      <div className={cn(
+                        'w-6 h-6 rounded-full border-2 flex items-center justify-center',
+                        item.approved ? 'border-[var(--accent)] bg-[var(--accent)]/20' : 'border-[var(--border)]'
+                      )}>
+                        {item.approved && <span className="text-xs text-[var(--accent)]">✓</span>}
+                      </div>
+                    </button>
+
+                    {/* Content — tap to expand */}
+                    <div className="flex-1 min-w-0" onClick={() => setEditingIdx(isEditing ? null : i)}>
+                      <p className="text-[15px] font-medium">{item.title}</p>
+                      <div className="flex flex-wrap gap-2 mt-1.5">
+                        <span className="text-xs text-[var(--text-muted)]">📅 {fmtDate(item.scheduledDate)}</span>
+                        {item.scheduledTime && <span className="text-xs text-[var(--text-muted)]">🕐 {fmt12(item.scheduledTime)}</span>}
+                        <span className="text-xs">{CAT_EMOJI[item.category]} {item.category}</span>
+                        <span className={cn('text-xs px-1.5 py-0.5 rounded-full',
+                          item.priority === 'high' ? 'bg-red-500/20 text-red-400' :
+                          item.priority === 'medium' ? 'bg-amber-500/20 text-amber-400' :
+                          'bg-emerald-500/20 text-emerald-400'
+                        )}>{item.priority}</span>
+                      </div>
+                      {item.conflict && <p className="text-xs text-[var(--warning)] mt-1">⚠️ {item.conflict}</p>}
                     </div>
-                    {item.conflict && (
-                      <p className="text-xs text-[var(--warning)] mt-1">⚠️ {item.conflict}</p>
-                    )}
+
+                    {/* Edit indicator */}
+                    <span className="text-xs text-[var(--text-muted)] mt-1">{isEditing ? '▲' : '✏️'}</span>
                   </div>
+
+                  {/* Expanded edit form */}
+                  {isEditing && (
+                    <div className="px-4 pb-4 space-y-3 border-t border-[var(--border)] pt-3">
+                      {/* Title */}
+                      <input value={item.title} onChange={e => updateItem(i, 'title', e.target.value)}
+                        className="w-full bg-[var(--bg)] rounded-xl px-4 py-2.5 text-[15px] border border-[var(--border)] outline-none focus:border-[var(--accent)]"
+                        placeholder="Task title" />
+
+                      {/* Date + Time */}
+                      <div className="flex gap-2">
+                        <input type="date" value={item.scheduledDate} onChange={e => updateItem(i, 'scheduledDate', e.target.value)}
+                          className="flex-1 bg-[var(--bg)] rounded-xl px-3 py-2.5 text-sm border border-[var(--border)] outline-none" />
+                        <input type="time" value={item.scheduledTime || ''} onChange={e => updateItem(i, 'scheduledTime', e.target.value)}
+                          className="w-32 bg-[var(--bg)] rounded-xl px-3 py-2.5 text-sm border border-[var(--border)] outline-none"
+                          placeholder="Time" />
+                      </div>
+
+                      {/* Priority */}
+                      <div className="flex gap-2">
+                        {(['high', 'medium', 'low'] as const).map(p => (
+                          <button key={p} onClick={() => updateItem(i, 'priority', p)}
+                            className={cn('flex-1 py-2 rounded-xl text-xs font-medium capitalize border',
+                              item.priority === p
+                                ? p === 'high' ? 'border-red-400 bg-red-500/20 text-red-400' : p === 'medium' ? 'border-amber-400 bg-amber-500/20 text-amber-400' : 'border-emerald-400 bg-emerald-500/20 text-emerald-400'
+                                : 'border-[var(--border)] text-[var(--text-muted)]'
+                            )}>{p}</button>
+                        ))}
+                      </div>
+
+                      {/* Category */}
+                      <div className="flex gap-1.5 flex-wrap">
+                        {(['business', 'client', 'school', 'personal', 'health'] as const).map(c => (
+                          <button key={c} onClick={() => updateItem(i, 'category', c)}
+                            className={cn('px-2.5 py-1.5 rounded-xl text-[11px] capitalize border',
+                              item.category === c ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-muted)]'
+                            )}>{CAT_EMOJI[c]} {c}</button>
+                        ))}
+                      </div>
+
+                      {/* Delete */}
+                      <button onClick={() => removeItem(i)}
+                        className="w-full py-2 rounded-xl text-sm text-[var(--danger)] border border-[var(--danger)]/20">
+                        🗑 Remove this task
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
 
             {/* Actions */}
             <div className="flex gap-3 pt-2">
@@ -314,13 +398,13 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
                 className="flex-1 py-4 rounded-2xl bg-[var(--accent)] text-white font-bold text-base active:scale-95 disabled:opacity-30">
                 ✅ Add {result.items.filter(i => i.approved).length} Tasks
               </button>
-              <button onClick={() => { setStep('idle'); setTranscript('') }}
+              <button onClick={() => { setStep('idle') }}
                 className="py-4 px-6 rounded-2xl border border-[var(--border)] text-sm font-medium">
                 🎤 Redo
               </button>
             </div>
 
-            {/* Original transcript */}
+            {/* Transcript */}
             <details className="text-xs">
               <summary className="text-[var(--text-muted)] cursor-pointer">View original transcript</summary>
               <p className="bg-[var(--card)] rounded-lg p-3 mt-1 text-[var(--text-muted)]">{transcript}</p>
