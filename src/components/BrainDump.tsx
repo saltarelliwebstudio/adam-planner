@@ -59,13 +59,21 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
     r.interimResults = true
     r.lang = 'en-CA'
 
+    let processedUpTo = 0
     let finalText = ''
     r.onresult = (e: SpeechRecognitionEvent) => {
+      // Only process new results to avoid duplication
+      let newFinal = ''
       let interim = ''
-      for (let i = 0; i < e.results.length; i++) {
-        if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' '
-        else interim += e.results[i][0].transcript
+      for (let i = processedUpTo; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          newFinal += e.results[i][0].transcript + ' '
+          processedUpTo = i + 1
+        } else {
+          interim += e.results[i][0].transcript
+        }
       }
+      finalText += newFinal
       setTranscript(finalText + interim)
     }
 

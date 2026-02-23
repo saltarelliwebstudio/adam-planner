@@ -149,6 +149,87 @@ export function getAnalyticsDue(): AnalyticsClient[] {
   })
 }
 
+// ── Recurring / Auto Tasks ──
+
+const RECURRING_KEY = 'cc_recurring_generated'
+
+function getRecurringGenerated(): Record<string, boolean> {
+  return getJson<Record<string, boolean>>(RECURRING_KEY, {})
+}
+
+function markRecurringGenerated(key: string) {
+  const gen = getRecurringGenerated()
+  gen[key] = true
+  setJson(RECURRING_KEY, gen)
+}
+
+export interface RecurringTask {
+  title: string
+  category: 'business' | 'client' | 'school' | 'personal' | 'health'
+  priority: 'high' | 'medium' | 'low'
+  dayOfWeek?: number // 0=Sun..6=Sat, undefined = daily
+  dayOfMonth?: number // for monthly tasks
+}
+
+const RECURRING_TASKS: RecurringTask[] = [
+  // Daily
+  { title: '🙏 Morning routine (pray, bed, cold shower, exercise, stretch, read)', category: 'health', priority: 'high' },
+  { title: '💪 Physical training', category: 'health', priority: 'high' },
+  { title: '📞 Outreach — reach out to 1 person in person', category: 'business', priority: 'high' },
+  // Saturday
+  { title: '🔍 Check client apps, automations & dashboards', category: 'client', priority: 'high', dayOfWeek: 6 },
+  // Sunday
+  { title: '💰 Log business expenses for the week', category: 'business', priority: 'high', dayOfWeek: 0 },
+  { title: '📋 Prep for next week — review schedule & goals', category: 'business', priority: 'high', dayOfWeek: 0 },
+]
+
+// Monthly task — added on the last day of the month
+const MONTHLY_TASKS: { title: string; category: RecurringTask['category']; priority: RecurringTask['priority'] }[] = [
+  { title: '📊 Send monthly website analytics to all clients', category: 'client', priority: 'high' },
+]
+
+export function generateRecurringTasks(dateStr: string) {
+  const gen = getRecurringGenerated()
+  const d = new Date(dateStr + 'T12:00:00')
+  const dow = d.getDay()
+
+  for (const task of RECURRING_TASKS) {
+    // Daily tasks or matching day-of-week
+    if (task.dayOfWeek === undefined || task.dayOfWeek === dow) {
+      const key = `${dateStr}:${task.title}`
+      if (!gen[key]) {
+        addTask({
+          title: task.title,
+          category: task.category,
+          priority: task.priority,
+          scheduledDate: dateStr,
+          status: 'todo',
+        })
+        markRecurringGenerated(key)
+      }
+    }
+  }
+
+  // Monthly tasks — last day of month or 28th+
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+  const currentDay = d.getDate()
+  if (currentDay === lastDay || currentDay >= 28) {
+    for (const task of MONTHLY_TASKS) {
+      const key = `${d.getFullYear()}-${d.getMonth()}:${task.title}`
+      if (!gen[key]) {
+        addTask({
+          title: task.title,
+          category: task.category,
+          priority: task.priority,
+          scheduledDate: dateStr,
+          status: 'todo',
+        })
+        markRecurringGenerated(key)
+      }
+    }
+  }
+}
+
 // Date helpers
 export function today(): string {
   // Adam is in America/Toronto

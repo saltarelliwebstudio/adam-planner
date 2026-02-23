@@ -7,8 +7,7 @@ import { getBlocksForDay, getFreeHours, DAY_NAMES } from '@/lib/schedule'
 import {
   getTasks, addTask, updateTask, saveTasks,
   today, getWeekStart, getBig3, saveBig3, getOverdueTasks,
-  getAnalyticsClients, addAnalyticsClient, markAnalyticsSent, getAnalyticsDue, saveAnalyticsClients,
-  AnalyticsClient
+  generateRecurringTasks,
 } from '@/lib/store'
 
 function cn(...c: (string | false | undefined)[]) { return c.filter(Boolean).join(' ') }
@@ -397,8 +396,6 @@ function LogView({ tasks }: { tasks: Task[] }) {
         ) : <p className="text-sm text-[var(--text-muted)] px-1">All clear! 🎉</p>}
       </div>
 
-      <AnalyticsSection />
-
       <div className="bg-[var(--card)] rounded-2xl p-4">
         <h3 className="text-sm font-semibold mb-2">🔁 Don&apos;t know what to do next?</h3>
         <ol className="list-decimal list-inside space-y-1 text-sm text-[var(--text-muted)]">
@@ -410,58 +407,6 @@ function LogView({ tasks }: { tasks: Task[] }) {
           <li>Learn something for a client</li>
         </ol>
       </div>
-    </div>
-  )
-}
-
-// ─── Analytics ───────────────────────────────────────
-function AnalyticsSection() {
-  const [clients, setClients] = useState<AnalyticsClient[]>([])
-  const [showAdd, setShowAdd] = useState(false)
-  const [name, setName] = useState('')
-  const [url, setUrl] = useState('')
-
-  useEffect(() => { setClients(getAnalyticsClients()) }, [])
-  const refresh = () => setClients(getAnalyticsClients())
-  const due = getAnalyticsDue()
-
-  return (
-    <div className="bg-[var(--card)] rounded-2xl p-4">
-      <div className="flex justify-between items-center mb-3">
-        <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">📊 Monthly Analytics</h2>
-        <button onClick={() => setShowAdd(!showAdd)} className="text-xs text-[var(--accent)]">+ Client</button>
-      </div>
-      {showAdd && (
-        <div className="space-y-2 mb-3">
-          <input placeholder="Client name" value={name} onChange={e => setName(e.target.value)}
-            className="w-full bg-[var(--bg)] rounded-xl px-3 py-2 text-sm border border-[var(--border)] outline-none" />
-          <input placeholder="Website (optional)" value={url} onChange={e => setUrl(e.target.value)}
-            className="w-full bg-[var(--bg)] rounded-xl px-3 py-2 text-sm border border-[var(--border)] outline-none" />
-          <button onClick={() => { if (name.trim()) { addAnalyticsClient(name.trim(), url.trim() || undefined); setName(''); setUrl(''); setShowAdd(false); refresh() }}}
-            className="w-full py-2 rounded-xl bg-[var(--accent)] text-sm font-medium">Add</button>
-        </div>
-      )}
-      {clients.map(c => {
-        const isDue = due.some(d => d.id === c.id)
-        return (
-          <div key={c.id} className="flex items-center gap-3 py-2 border-b border-[var(--border)] last:border-0">
-            <button onClick={() => { markAnalyticsSent(c.id); refresh() }}
-              className={cn('w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center',
-                !isDue ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--text-muted)]'
-              )}>
-              {!isDue && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
-            </button>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm">{c.clientName}</p>
-            </div>
-            <span className={cn('text-xs px-2 py-0.5 rounded-full', isDue ? 'bg-orange-500/20 text-orange-400' : 'bg-emerald-500/20 text-emerald-400')}>
-              {isDue ? 'due' : 'sent'}
-            </span>
-            <button onClick={() => { saveAnalyticsClients(clients.filter(x => x.id !== c.id)); refresh() }}
-              className="text-[var(--text-muted)] text-xs p-1">✕</button>
-          </div>
-        )
-      })}
     </div>
   )
 }
@@ -536,7 +481,10 @@ export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [showAdd, setShowAdd] = useState(false)
 
-  useEffect(() => { setTasks(getTasks()) }, [])
+  useEffect(() => {
+    generateRecurringTasks(today())
+    setTasks(getTasks())
+  }, [])
 
   const refresh = useCallback(() => setTasks(getTasks()), [])
 
