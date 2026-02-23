@@ -75,13 +75,24 @@ export async function POST(req: NextRequest) {
       messages,
     })
 
-    const text = response.content[0].type === 'text' ? response.content[0].text : ''
+    let text = response.content[0].type === 'text' ? response.content[0].text : ''
+    
+    // Strip markdown code fences if present
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
     
     // Try to parse as JSON, fallback to plain reply
     try {
       const parsed = JSON.parse(text)
       return NextResponse.json(parsed)
     } catch {
+      // Try to extract JSON from mixed content
+      const jsonMatch = text.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0])
+          return NextResponse.json(parsed)
+        } catch { /* fall through */ }
+      }
       return NextResponse.json({ reply: text, action: null })
     }
   } catch (error) {
