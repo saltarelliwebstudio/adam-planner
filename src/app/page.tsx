@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import BrainDump from '@/components/BrainDump'
+import WeekGrid from '@/components/WeekGrid'
 import { Task } from '@/lib/types'
 import { getBlocksForDay, getFreeHours, DAY_NAMES } from '@/lib/schedule'
 import {
   getTasks, addTask, updateTask, saveTasks,
-  today, getWeekStart, getBig3, saveBig3, getOverdueTasks,
+  today, getOverdueTasks,
   generateRecurringTasks,
 } from '@/lib/store'
 
@@ -287,72 +288,6 @@ function AllTasksView({ tasks, onToggle, onDelete, onAdd }: {
   )
 }
 
-// ─── Week View ───────────────────────────────────────
-function WeekView({ tasks }: { tasks: Task[] }) {
-  const d = today()
-  const weekStart = getWeekStart(d)
-  const [big3, setBig3] = useState(['', '', ''])
-
-  useEffect(() => { setBig3(getBig3(weekStart)) }, [weekStart])
-
-  function handleBig3(idx: number, val: string) {
-    const next = [...big3]; next[idx] = val; setBig3(next); saveBig3(weekStart, next)
-  }
-
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const dt = new Date(weekStart + 'T12:00:00'); dt.setDate(dt.getDate() + i)
-    const dateStr = dt.toISOString().split('T')[0]
-    const dayTasks = tasks.filter(t => t.scheduledDate === dateStr)
-    return { dateStr, dow: dt.getDay(), dayTasks, done: dayTasks.filter(t => t.status === 'done').length, isToday: dateStr === d }
-  })
-
-  return (
-    <div className="space-y-4">
-      <h1 className="text-3xl font-bold pt-2">This Week</h1>
-
-      <div className="bg-[var(--card)] rounded-2xl p-4">
-        <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-3">🎯 Big 3 Goals</h2>
-        {big3.map((item, i) => (
-          <input key={i} value={item} onChange={e => handleBig3(i, e.target.value)} placeholder={`Goal ${i + 1}`}
-            className="w-full bg-[var(--bg)] rounded-xl px-4 py-2.5 text-sm mb-2 outline-none border border-[var(--border)] focus:border-[var(--accent)]" />
-        ))}
-      </div>
-
-      <div className="space-y-2">
-        {days.map(day => (
-          <div key={day.dateStr} className={cn(
-            'bg-[var(--card)] rounded-xl p-3 flex items-center gap-3',
-            day.isToday && 'ring-2 ring-[var(--accent)]'
-          )}>
-            <div className="text-center w-12">
-              <p className="text-[11px] text-[var(--text-muted)]">{DAY_NAMES[day.dow].slice(0, 3)}</p>
-              <p className="text-lg font-bold">{day.dateStr.split('-')[2]}</p>
-            </div>
-            <div className="flex-1">
-              <div className="flex gap-2 text-xs text-[var(--text-muted)]">
-                <span>{getFreeHours(day.dow).toFixed(1)}h free</span>
-                <span>·</span>
-                <span>{day.dayTasks.length} tasks ({day.done} done)</span>
-              </div>
-              {day.dayTasks.length > 0 && (
-                <div className="h-1.5 bg-[var(--bg)] rounded-full mt-1.5 overflow-hidden">
-                  <div className="h-full bg-[var(--accent)] rounded-full transition-all"
-                    style={{ width: `${(day.done / day.dayTasks.length) * 100}%` }} />
-                </div>
-              )}
-            </div>
-            {day.isToday && <span className="text-xs text-[var(--accent)] font-bold">TODAY</span>}
-          </div>
-        ))}
-      </div>
-
-      <p className="text-center text-sm text-[var(--text-muted)]">
-        ~{days.reduce((s, d) => s + getFreeHours(d.dow), 0).toFixed(0)} free hours this week
-      </p>
-    </div>
-  )
-}
-
 // ─── Log View ────────────────────────────────────────
 function LogView({ tasks }: { tasks: Task[] }) {
   const d = today()
@@ -512,7 +447,7 @@ export default function Home() {
     <main className="min-h-screen pb-24 px-4 pt-4 max-w-lg mx-auto">
       {tab === 'my-day' && <MyDayView tasks={tasks} onToggle={handleToggle} onDelete={handleDelete} onAdd={() => setShowAdd(true)} />}
       {tab === 'tasks' && <AllTasksView tasks={tasks} onToggle={handleToggle} onDelete={handleDelete} onAdd={() => setShowAdd(true)} />}
-      {tab === 'week' && <WeekView tasks={tasks} />}
+      {tab === 'week' && <WeekGrid tasks={tasks} onRefresh={refresh} />}
       {tab === 'log' && <LogView tasks={tasks} />}
 
       <NavBar tab={tab} setTab={setTab} />
