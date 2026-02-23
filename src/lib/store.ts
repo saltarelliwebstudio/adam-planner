@@ -149,6 +149,38 @@ export function getAnalyticsDue(): AnalyticsClient[] {
   })
 }
 
+// ── Icebox ──
+
+const ICEBOX_KEY = 'cc_icebox'
+
+export interface IceboxIdea {
+  id: string
+  text: string
+  createdAt: string
+}
+
+export function getIcebox(): IceboxIdea[] {
+  return getJson<IceboxIdea[]>(ICEBOX_KEY, [])
+}
+
+export function addToIcebox(text: string): IceboxIdea {
+  const ideas = getIcebox()
+  const idea: IceboxIdea = { id: crypto.randomUUID(), text, createdAt: new Date().toISOString() }
+  ideas.push(idea)
+  setJson(ICEBOX_KEY, ideas)
+  return idea
+}
+
+export function removeFromIcebox(id: string) {
+  setJson(ICEBOX_KEY, getIcebox().filter(i => i.id !== id))
+}
+
+export function getRandomIceboxIdea(): IceboxIdea | null {
+  const ideas = getIcebox()
+  if (ideas.length === 0) return null
+  return ideas[Math.floor(Math.random() * ideas.length)]
+}
+
 // ── Recurring / Auto Tasks ──
 
 const RECURRING_KEY = 'cc_recurring_generated'

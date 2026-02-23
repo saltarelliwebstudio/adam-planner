@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import BrainDump from '@/components/BrainDump'
 import WeekGrid from '@/components/WeekGrid'
+import WhatNext from '@/components/WhatNext'
 import { Task } from '@/lib/types'
 import { getBlocksForDay, getFreeHours, DAY_NAMES } from '@/lib/schedule'
 import {
   getTasks, addTask, updateTask, saveTasks,
   today, getOverdueTasks,
   generateRecurringTasks,
+  getIcebox, addToIcebox, removeFromIcebox, getRandomIceboxIdea, IceboxIdea,
 } from '@/lib/store'
 
 function cn(...c: (string | false | undefined)[]) { return c.filter(Boolean).join(' ') }
@@ -19,7 +21,81 @@ function fmtDate(d: string) {
   })
 }
 
-type Tab = 'my-day' | 'tasks' | 'week' | 'log'
+type Tab = 'my-day' | 'tasks' | 'week' | 'icebox' | 'log'
+
+// ─── Icebox Nudge (random idea from the icebox) ─────
+function IceboxNudge() {
+  const [idea, setIdea] = useState<IceboxIdea | null>(null)
+  useEffect(() => { setIdea(getRandomIceboxIdea()) }, [])
+  if (!idea) return null
+  return (
+    <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 flex items-center gap-3">
+      <span className="text-lg">🧊</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] text-blue-400 font-semibold uppercase">From the Icebox</p>
+        <p className="text-sm truncate">{idea.text}</p>
+      </div>
+      <button onClick={() => setIdea(getRandomIceboxIdea())} className="text-xs text-[var(--text-muted)] p-1">🔄</button>
+    </div>
+  )
+}
+
+// ─── Icebox View ─────────────────────────────────────
+function IceboxView() {
+  const [ideas, setIdeas] = useState<IceboxIdea[]>([])
+  const [newIdea, setNewIdea] = useState('')
+  
+  useEffect(() => { setIdeas(getIcebox()) }, [])
+  const refresh = () => setIdeas(getIcebox())
+
+  return (
+    <div className="space-y-4">
+      <div className="pt-2">
+        <h1 className="text-3xl font-bold">🧊 Icebox</h1>
+        <p className="text-sm text-[var(--text-muted)] mt-0.5">Ideas on ice — not tasks yet, just things to think about</p>
+      </div>
+
+      {/* Quick add */}
+      <div className="flex gap-2">
+        <input value={newIdea} onChange={e => setNewIdea(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && newIdea.trim()) { addToIcebox(newIdea.trim()); setNewIdea(''); refresh() }}}
+          placeholder="Drop an idea..."
+          className="flex-1 bg-[var(--card)] rounded-xl px-4 py-3 text-[15px] border border-[var(--border)] outline-none focus:border-[var(--accent)]" />
+        <button onClick={() => { if (newIdea.trim()) { addToIcebox(newIdea.trim()); setNewIdea(''); refresh() }}}
+          disabled={!newIdea.trim()}
+          className="px-4 rounded-xl bg-[var(--accent)] text-white font-bold disabled:opacity-30">+</button>
+      </div>
+
+      {ideas.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-4xl mb-3">🧊</p>
+          <p className="text-sm text-[var(--text-muted)]">No ideas on ice yet</p>
+          <p className="text-xs text-[var(--text-muted)] mt-1">Brain dump and put things here when they&apos;re not ready to be tasks</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {ideas.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(idea => (
+            <div key={idea.id} className="bg-[var(--card)] rounded-xl px-4 py-3 flex items-center gap-3">
+              <span className="text-lg">💡</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[15px]">{idea.text}</p>
+                <p className="text-[10px] text-[var(--text-muted)]">
+                  {new Date(idea.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </p>
+              </div>
+              <button onClick={() => { removeFromIcebox(idea.id); refresh() }}
+                className="text-[var(--text-muted)] p-1 hover:text-[var(--danger)]">✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="text-xs text-center text-[var(--text-muted)]">
+        💡 A random idea shows up on your My Day page. You never know when one will click.
+      </p>
+    </div>
+  )
+}
 
 const CAT_COLORS: Record<string, string> = {
   business: 'text-blue-400', client: 'text-purple-400', school: 'text-amber-400',
@@ -188,6 +264,32 @@ function MyDayView({ tasks, onToggle, onDelete, onAdd }: {
           </div>
         )}
       </div>
+
+      {/* What should I do next? */}
+      <WhatNext />
+
+      {/* Icebox nudge — random old idea */}
+      <IceboxNudge />
+
+      {/* Rolling task alerts — tasks sitting 3+ days */}
+      {(() => {
+        const stale = tasks.filter(t => {
+          if (t.status === 'done') return false
+          const created = new Date(t.createdAt)
+          const now = new Date()
+          const days = Math.floor((now.getTime() - created.getTime()) / 86400000)
+          return days >= 3 && t.scheduledDate <= d
+        })
+        if (stale.length === 0) return null
+        return (
+          <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-3">
+            <h3 className="text-xs font-bold text-orange-400 mb-1">🔥 Rolling for 3+ days — do it, delegate it, or kill it</h3>
+            {stale.slice(0, 3).map(t => (
+              <p key={t.id} className="text-sm py-0.5">{t.title}</p>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* Today's schedule */}
       <details>
@@ -393,6 +495,7 @@ function NavBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
     { key: 'my-day', label: 'My Day', emoji: '☀️' },
     { key: 'tasks', label: 'Tasks', emoji: '📋' },
     { key: 'week', label: 'Week', emoji: '📆' },
+    { key: 'icebox', label: 'Icebox', emoji: '🧊' },
     { key: 'log', label: 'Log', emoji: '📝' },
   ]
   return (
@@ -448,6 +551,7 @@ export default function Home() {
       {tab === 'my-day' && <MyDayView tasks={tasks} onToggle={handleToggle} onDelete={handleDelete} onAdd={() => setShowAdd(true)} />}
       {tab === 'tasks' && <AllTasksView tasks={tasks} onToggle={handleToggle} onDelete={handleDelete} onAdd={() => setShowAdd(true)} />}
       {tab === 'week' && <WeekGrid tasks={tasks} onRefresh={refresh} />}
+      {tab === 'icebox' && <IceboxView />}
       {tab === 'log' && <LogView tasks={tasks} />}
 
       <NavBar tab={tab} setTab={setTab} />
