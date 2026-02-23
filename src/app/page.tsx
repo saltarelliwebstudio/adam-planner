@@ -5,7 +5,9 @@ import { Task, ViewMode } from '@/lib/types'
 import { getBlocksForDay, getFreeHours, DAY_NAMES, DAY_SHORT } from '@/lib/schedule'
 import {
   getTasks, addTask, updateTask, getTasksForDate, getOverdueTasks,
-  today, getWeekStart, getBig3, saveBig3, saveTasks, rollOverTasks
+  today, getWeekStart, getBig3, saveBig3, saveTasks, rollOverTasks,
+  getAnalyticsClients, addAnalyticsClient, markAnalyticsSent, getAnalyticsDue, saveAnalyticsClients,
+  AnalyticsClient
 } from '@/lib/store'
 
 // ─── Helpers ────────────────────────────────────────
@@ -211,6 +213,23 @@ function TodayView({ tasks, onToggle, onDelete, onAdd }: {
           />
         </div>
       </div>
+
+      {/* Analytics Due */}
+      {(() => {
+        const due = getAnalyticsDue()
+        const d2 = new Date()
+        const daysLeft = new Date(d2.getFullYear(), d2.getMonth() + 1, 0).getDate() - d2.getDate()
+        if (due.length === 0 || daysLeft > 7) return null
+        return (
+          <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-3">
+            <h3 className="text-sm font-semibold text-purple-400 mb-1">📊 Monthly Analytics Due ({due.length} clients)</h3>
+            <p className="text-xs text-[var(--text-muted)]">{daysLeft} days left this month</p>
+            {due.map(c => (
+              <div key={c.id} className="text-sm mt-1">{c.clientName}{c.websiteUrl ? ` — ${c.websiteUrl}` : ''}</div>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* Overdue */}
       {overdue.length > 0 && (
@@ -432,6 +451,9 @@ function LogView({ tasks }: { tasks: Task[] }) {
         {remaining.length === 0 && <p className="text-sm text-[var(--text-muted)]">All done! 🎉</p>}
       </div>
 
+      {/* Monthly Analytics */}
+      <AnalyticsSection />
+
       {/* Priority list reminder */}
       <div className="bg-[var(--card)] rounded-xl p-4 text-sm">
         <h3 className="font-semibold mb-2">🔁 Don&apos;t know what&apos;s next?</h3>
@@ -445,6 +467,97 @@ function LogView({ tasks }: { tasks: Task[] }) {
         </ol>
         <p className="mt-2 text-xs italic text-[var(--accent)]">&ldquo;What would move money toward me fastest?&rdquo;</p>
       </div>
+    </div>
+  )
+}
+
+function AnalyticsSection() {
+  const [clients, setClients] = useState<AnalyticsClient[]>([])
+  const [newName, setNewName] = useState('')
+  const [newUrl, setNewUrl] = useState('')
+  const [showAdd, setShowAdd] = useState(false)
+
+  useEffect(() => {
+    setClients(getAnalyticsClients())
+  }, [])
+
+  const refresh = () => setClients(getAnalyticsClients())
+
+  const due = getAnalyticsDue()
+  const now = new Date()
+  const monthName = now.toLocaleString('en-US', { month: 'long' })
+
+  return (
+    <div className="bg-[var(--card)] rounded-xl p-4">
+      <div className="flex justify-between items-center mb-3">
+        <h2 className="text-sm font-semibold text-[var(--text-muted)]">📊 MONTHLY ANALYTICS — {monthName.toUpperCase()}</h2>
+        <button onClick={() => setShowAdd(!showAdd)} className="text-xs text-[var(--accent)]">+ Client</button>
+      </div>
+
+      {showAdd && (
+        <div className="space-y-2 mb-3">
+          <input
+            placeholder="Client name"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            className="w-full bg-[var(--bg)] rounded-lg px-3 py-2 text-sm outline-none border border-[var(--border)] focus:border-[var(--accent)]"
+          />
+          <input
+            placeholder="Website URL (optional)"
+            value={newUrl}
+            onChange={e => setNewUrl(e.target.value)}
+            className="w-full bg-[var(--bg)] rounded-lg px-3 py-2 text-sm outline-none border border-[var(--border)] focus:border-[var(--accent)]"
+          />
+          <button
+            onClick={() => {
+              if (newName.trim()) {
+                addAnalyticsClient(newName.trim(), newUrl.trim() || undefined)
+                setNewName('')
+                setNewUrl('')
+                setShowAdd(false)
+                refresh()
+              }
+            }}
+            className="w-full py-2 rounded-lg bg-[var(--accent)] text-sm font-medium"
+          >Add Client</button>
+        </div>
+      )}
+
+      {clients.length === 0 && (
+        <p className="text-sm text-[var(--text-muted)]">No clients added. Tap + to add one.</p>
+      )}
+
+      {clients.map(c => {
+        const isDue = due.some(d => d.id === c.id)
+        return (
+          <div key={c.id} className="flex items-center gap-3 py-2 border-b border-[var(--border)] last:border-0">
+            <button
+              onClick={() => { markAnalyticsSent(c.id); refresh() }}
+              className={cn(
+                'w-6 h-6 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all',
+                !isDue ? 'bg-[var(--success)] border-[var(--success)]' : 'border-[var(--text-muted)]'
+              )}
+            >
+              {!isDue && <span className="text-xs">✓</span>}
+            </button>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">{c.clientName}</p>
+              {c.websiteUrl && <p className="text-xs text-[var(--text-muted)]">{c.websiteUrl}</p>}
+            </div>
+            <span className={cn('text-xs px-2 py-0.5 rounded-full', isDue ? 'bg-orange-500/20 text-orange-400' : 'bg-emerald-500/20 text-emerald-400')}>
+              {isDue ? 'due' : 'sent'}
+            </span>
+            <button
+              onClick={() => {
+                const updated = clients.filter(x => x.id !== c.id)
+                saveAnalyticsClients(updated)
+                refresh()
+              }}
+              className="text-[var(--text-muted)] text-xs hover:text-[var(--danger)] p-1"
+            >✕</button>
+          </div>
+        )
+      })}
     </div>
   )
 }

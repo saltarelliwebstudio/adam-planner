@@ -40,4 +40,12 @@ export interface NonNegotiable {
   tracker: Record<string, boolean> // date -> done
 }
 
+export interface ClientAnalytics {
+  id: string
+  clientName: string
+  websiteUrl?: string
+  lastSent?: string // ISO date of last analytics send
+  notes?: string
+}
+
 export type ViewMode = 'today' | 'week' | 'tasks' | 'log'

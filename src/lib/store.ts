@@ -100,6 +100,55 @@ export function rollOverTasks(fromDate: string, toDate: string) {
   return rolled
 }
 
+// Client Analytics
+const ANALYTICS_KEY = 'cc_analytics'
+
+export interface AnalyticsClient {
+  id: string
+  clientName: string
+  websiteUrl?: string
+  lastSent?: string
+  notes?: string
+}
+
+export function getAnalyticsClients(): AnalyticsClient[] {
+  return getJson<AnalyticsClient[]>(ANALYTICS_KEY, [])
+}
+
+export function saveAnalyticsClients(clients: AnalyticsClient[]) {
+  setJson(ANALYTICS_KEY, clients)
+}
+
+export function addAnalyticsClient(name: string, url?: string): AnalyticsClient {
+  const clients = getAnalyticsClients()
+  const client: AnalyticsClient = {
+    id: crypto.randomUUID(),
+    clientName: name,
+    websiteUrl: url,
+  }
+  clients.push(client)
+  saveAnalyticsClients(clients)
+  return client
+}
+
+export function markAnalyticsSent(id: string) {
+  const clients = getAnalyticsClients()
+  const idx = clients.findIndex(c => c.id === id)
+  if (idx >= 0) {
+    clients[idx].lastSent = new Date().toISOString().split('T')[0]
+    saveAnalyticsClients(clients)
+  }
+}
+
+export function getAnalyticsDue(): AnalyticsClient[] {
+  const now = new Date()
+  const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0')
+  return getAnalyticsClients().filter(c => {
+    if (!c.lastSent) return true
+    return !c.lastSent.startsWith(currentMonth)
+  })
+}
+
 // Date helpers
 export function today(): string {
   // Adam is in America/Toronto
