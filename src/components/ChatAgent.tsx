@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { addTask, getTasks, updateTask, today } from '@/lib/store'
 
 interface Message {
   id: string
@@ -9,12 +10,86 @@ interface Message {
   timestamp: Date
 }
 
+interface ChatAction {
+  type: 'add_task' | 'complete_task' | 'move_task' | 'delete_task' | 'reschedule'
+  data: {
+    title?: string
+    priority?: 'high' | 'medium' | 'low'
+    category?: 'business' | 'client' | 'school' | 'personal' | 'health'
+    scheduledDate?: string
+    scheduledTime?: string
+    deadline?: string | null
+    taskId?: string
+    query?: string
+    newDate?: string
+  }
+}
+
+function executeAction(action: ChatAction): string | null {
+  try {
+    switch (action.type) {
+      case 'add_task': {
+        const d = action.data
+        const task = addTask({
+          title: d.title || 'Untitled task',
+          priority: d.priority || 'medium',
+          category: d.category || 'personal',
+          scheduledDate: d.scheduledDate || today(),
+          scheduledTime: d.scheduledTime,
+          deadline: d.deadline || undefined,
+          status: 'todo',
+        })
+        return `✅ Added: "${task.title}"`
+      }
+      case 'complete_task': {
+        const tasks = getTasks()
+        const q = (action.data.query || action.data.title || '').toLowerCase()
+        const match = tasks.find(t => t.status !== 'done' && t.title.toLowerCase().includes(q))
+        if (match) {
+          updateTask(match.id, { status: 'done', completedAt: new Date().toISOString() })
+          return `✅ Completed: "${match.title}"`
+        }
+        return `⚠️ Couldn't find a task matching "${q}"`
+      }
+      case 'move_task':
+      case 'reschedule': {
+        const tasks = getTasks()
+        const q = (action.data.query || action.data.title || '').toLowerCase()
+        const match = tasks.find(t => t.status !== 'done' && t.title.toLowerCase().includes(q))
+        if (match && action.data.newDate) {
+          updateTask(match.id, { scheduledDate: action.data.newDate })
+          return `📅 Moved "${match.title}" to ${action.data.newDate}`
+        }
+        if (match && action.data.scheduledDate) {
+          updateTask(match.id, { scheduledDate: action.data.scheduledDate })
+          return `📅 Moved "${match.title}" to ${action.data.scheduledDate}`
+        }
+        return `⚠️ Couldn't find/move task`
+      }
+      case 'delete_task': {
+        const tasks = getTasks()
+        const q = (action.data.query || action.data.title || '').toLowerCase()
+        const match = tasks.find(t => t.title.toLowerCase().includes(q))
+        if (match) {
+          updateTask(match.id, { status: 'done' })
+          return `🗑 Removed: "${match.title}"`
+        }
+        return `⚠️ Couldn't find task to delete`
+      }
+      default:
+        return null
+    }
+  } catch {
+    return '⚠️ Failed to update'
+  }
+}
+
 export default function ChatAgent({ onScheduleChange }: { onScheduleChange?: () => void }) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'welcome',
       role: 'agent',
-      text: "Hey Adam 👋 I'm your schedule agent. Tell me what you need — add tasks, move things around, or just ask what's next. Voice or text, whatever's easier.",
+      text: "What's up? Tell me what to add, move, or check off. 🎤",
       timestamp: new Date(),
     }
   ])
@@ -24,75 +99,57 @@ export default function ChatAgent({ onScheduleChange }: { onScheduleChange?: () 
   const [isOpen, setIsOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Voice input via Web Speech API
-  function startListening() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) {
-      addMessage('agent', "Sorry, your browser doesn't support voice input. Try Chrome on your phone.")
-      return
-    }
+  useEffect(() => {
+    if (isOpen) inputRef.current?.focus()
+  }, [isOpen])
 
-    const recognition = new SpeechRecognition()
-    recognitionRef.current = recognition
-    recognition.continuous = false
-    recognition.interimResults = true
-    recognition.lang = 'en-US'
+  function startListening() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) { addMsg('agent', "Voice not supported — try Chrome."); return }
+
+    const r = new SR()
+    recognitionRef.current = r
+    r.continuous = false
+    r.interimResults = true
+    r.lang = 'en-CA'
 
     let finalTranscript = ''
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    r.onresult = (event: SpeechRecognitionEvent) => {
       let interim = ''
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript
-        } else {
-          interim += event.results[i][0].transcript
-        }
+        if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript
+        else interim += event.results[i][0].transcript
       }
       setInput(finalTranscript + interim)
     }
 
-    recognition.onend = () => {
+    r.onend = () => {
       setIsListening(false)
-      if (finalTranscript.trim()) {
-        setInput(finalTranscript.trim())
-        // Auto-send after voice
-        handleSend(finalTranscript.trim())
-      }
+      if (finalTranscript.trim()) handleSend(finalTranscript.trim())
     }
 
-    recognition.onerror = () => {
-      setIsListening(false)
-    }
-
-    recognition.start()
+    r.onerror = () => setIsListening(false)
+    r.start()
     setIsListening(true)
+    setInput('')
   }
 
-  function stopListening() {
-    recognitionRef.current?.stop()
-    setIsListening(false)
-  }
-
-  function addMessage(role: 'user' | 'agent', text: string) {
-    setMessages(prev => [...prev, {
-      id: crypto.randomUUID(),
-      role,
-      text,
-      timestamp: new Date(),
-    }])
+  function addMsg(role: 'user' | 'agent', text: string) {
+    setMessages(prev => [...prev, { id: crypto.randomUUID(), role, text, timestamp: new Date() }])
   }
 
   async function handleSend(voiceText?: string) {
     const text = voiceText || input.trim()
     if (!text || isProcessing) return
 
-    addMessage('user', text)
+    addMsg('user', text)
     setInput('')
     setIsProcessing(true)
 
@@ -102,36 +159,32 @@ export default function ChatAgent({ onScheduleChange }: { onScheduleChange?: () 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          history: messages.slice(-10).map(m => ({ role: m.role, text: m.text }))
+          history: messages.slice(-10).map(m => ({ role: m.role, text: m.text })),
         }),
       })
 
       const data = await res.json()
-      addMessage('agent', data.reply || "Got it, I've updated your schedule.")
+      const reply = data.reply || "Done!"
 
-      if (data.action) {
+      // Execute action if present
+      if (data.action && data.action.type) {
+        const result = executeAction(data.action as ChatAction)
+        addMsg('agent', reply + (result ? `\n\n${result}` : ''))
         onScheduleChange?.()
+      } else {
+        addMsg('agent', reply)
       }
     } catch {
-      addMessage('agent', "I'm having trouble connecting right now. Try again in a sec.")
+      addMsg('agent', "Connection issue — try again.")
     } finally {
       setIsProcessing(false)
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
-
   if (!isOpen) {
     return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-20 right-4 z-40 w-14 h-14 rounded-full bg-[var(--accent)] hover:bg-[var(--accent-hover)] shadow-lg flex items-center justify-center transition-all active:scale-95"
-      >
+      <button onClick={() => setIsOpen(true)}
+        className="fixed bottom-20 right-4 z-40 w-14 h-14 rounded-full bg-[var(--accent)] shadow-lg flex items-center justify-center active:scale-95 transition-all">
         <span className="text-2xl">💬</span>
       </button>
     )
@@ -142,20 +195,20 @@ export default function ChatAgent({ onScheduleChange }: { onScheduleChange?: () 
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
         <div>
-          <h2 className="font-semibold">Schedule Agent</h2>
-          <p className="text-xs text-[var(--text-muted)]">Voice or text — I'll handle the rest</p>
+          <h2 className="font-semibold text-base">Schedule Agent</h2>
+          <p className="text-[11px] text-[var(--text-muted)]">Voice or text — changes update instantly</p>
         </div>
-        <button onClick={() => setIsOpen(false)} className="text-[var(--text-muted)] text-xl p-2">✕</button>
+        <button onClick={() => setIsOpen(false)} className="text-[var(--text-muted)] text-2xl p-2 -mr-2">✕</button>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 scroll-container">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map(msg => (
           <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
+            <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap ${
               msg.role === 'user'
-                ? 'bg-[var(--accent)] text-white rounded-br-md'
-                : 'bg-[var(--card)] text-[var(--text)] rounded-bl-md'
+                ? 'bg-[var(--accent)] text-white rounded-br-sm'
+                : 'bg-[var(--card)] rounded-bl-sm'
             }`}>
               {msg.text}
             </div>
@@ -163,8 +216,8 @@ export default function ChatAgent({ onScheduleChange }: { onScheduleChange?: () 
         ))}
         {isProcessing && (
           <div className="flex justify-start">
-            <div className="bg-[var(--card)] rounded-2xl rounded-bl-md px-4 py-2.5 text-sm text-[var(--text-muted)]">
-              Thinking...
+            <div className="bg-[var(--card)] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm text-[var(--text-muted)]">
+              ⏳ Working on it...
             </div>
           </div>
         )}
@@ -172,31 +225,26 @@ export default function ChatAgent({ onScheduleChange }: { onScheduleChange?: () 
       </div>
 
       {/* Input */}
-      <div className="border-t border-[var(--border)] p-3 pb-[env(safe-area-inset-bottom)]">
+      <div className="border-t border-[var(--border)] p-3 pb-[max(env(safe-area-inset-bottom),12px)]">
         <div className="flex items-center gap-2">
           <button
-            onClick={isListening ? stopListening : startListening}
-            className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
-              isListening
-                ? 'bg-red-500 animate-pulse'
-                : 'bg-[var(--card)] hover:bg-[var(--card-hover)]'
-            }`}
-          >
-            <span className="text-lg">{isListening ? '⏹' : '🎤'}</span>
+            onClick={isListening ? () => { recognitionRef.current?.stop(); setIsListening(false) } : startListening}
+            className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
+              isListening ? 'bg-red-500 animate-pulse' : 'bg-[var(--card)]'
+            }`}>
+            <span className="text-xl">{isListening ? '⏹' : '🎤'}</span>
           </button>
           <input
+            ref={inputRef}
             value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isListening ? 'Listening...' : 'Tell me what to change...'}
-            className="flex-1 bg-[var(--card)] rounded-xl px-4 py-2.5 text-sm outline-none border border-[var(--border)] focus:border-[var(--accent)]"
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+            placeholder={isListening ? 'Listening...' : 'Add meeting at 3pm...'}
+            className="flex-1 bg-[var(--card)] rounded-xl px-4 py-3 text-[15px] outline-none border border-[var(--border)] focus:border-[var(--accent)]"
           />
-          <button
-            onClick={() => handleSend()}
-            disabled={!input.trim() || isProcessing}
-            className="w-10 h-10 rounded-full bg-[var(--accent)] hover:bg-[var(--accent-hover)] flex items-center justify-center flex-shrink-0 disabled:opacity-50 transition-all"
-          >
-            <span className="text-lg">↑</span>
+          <button onClick={() => handleSend()} disabled={!input.trim() || isProcessing}
+            className="w-12 h-12 rounded-full bg-[var(--accent)] flex items-center justify-center flex-shrink-0 disabled:opacity-30 active:scale-95">
+            <span className="text-xl">↑</span>
           </button>
         </div>
       </div>
