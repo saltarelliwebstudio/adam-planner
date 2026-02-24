@@ -1,5 +1,6 @@
 import { Task, DailyLog } from './types'
 import { supabase } from './supabase'
+import { getRunWorkout } from './running-plan'
 
 // ── In-memory cache (synced with Supabase) ──
 let tasksCache: Task[] = []
@@ -290,7 +291,7 @@ export interface RecurringTask {
 
 const RECURRING_TASKS: RecurringTask[] = [
   { title: '🙏 Morning routine (pray, bed, cold shower, exercise, stretch, read)', category: 'health', priority: 'high' },
-  { title: '💪 Physical training', category: 'health', priority: 'high' },
+  // Physical training replaced by running plan
   { title: '📞 Outreach — reach out to 1 person in person', category: 'business', priority: 'high' },
   { title: '🔍 Check client apps, automations & dashboards', category: 'client', priority: 'high', dayOfWeek: 6 },
   { title: '💰 Log business expenses for the week', category: 'business', priority: 'high', dayOfWeek: 0 },
@@ -319,6 +320,29 @@ export function generateRecurringTasks(dateStr: string) {
         recurringCache.add(key)
         supabase.from('planner_recurring_generated').insert({ key }).then()
       }
+    }
+  }
+
+  // ── Running plan ──
+  const runWorkout = getRunWorkout(dateStr)
+  if (runWorkout) {
+    const runKey = `${dateStr}:run:${runWorkout.title}`
+    if (!recurringCache.has(runKey)) {
+      const categoryMap: Record<string, Task['category']> = {
+        easy: 'health', long: 'health', tempo: 'health', intervals: 'health',
+        mp: 'health', strength: 'health', ma: 'health', cross: 'health',
+        rest: 'personal', race: 'health',
+      }
+      addTask({
+        title: runWorkout.title,
+        category: categoryMap[runWorkout.type] || 'health',
+        priority: runWorkout.type === 'race' ? 'high' : runWorkout.type === 'rest' ? 'low' : 'medium',
+        scheduledDate: dateStr,
+        status: 'todo',
+        notes: runWorkout.notes,
+      })
+      recurringCache.add(runKey)
+      supabase.from('planner_recurring_generated').insert({ key: runKey }).then()
     }
   }
 
