@@ -81,7 +81,7 @@ function taskToRow(t: Partial<Task> & { id?: string }) {
 // ── Tasks ──
 
 export function getTasks(): Task[] {
-  return tasksCache
+  return [...tasksCache]
 }
 
 export function saveTasks(tasks: Task[]) {
