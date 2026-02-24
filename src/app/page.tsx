@@ -11,6 +11,7 @@ import {
   today, getOverdueTasks,
   generateRecurringTasks,
   getIcebox, addToIcebox, removeFromIcebox, getRandomIceboxIdea, IceboxIdea,
+  initStore,
 } from '@/lib/store'
 
 function cn(...c: (string | false | undefined)[]) { return c.filter(Boolean).join(' ') }
@@ -519,9 +520,14 @@ export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [showAdd, setShowAdd] = useState(false)
 
+  const [loading, setLoading] = useState(true)
+
   useEffect(() => {
-    generateRecurringTasks(today())
-    setTasks(getTasks())
+    initStore().then(() => {
+      generateRecurringTasks(today())
+      setTasks(getTasks())
+      setLoading(false)
+    })
   }, [])
 
   const refresh = useCallback(() => setTasks(getTasks()), [])
@@ -544,6 +550,17 @@ export default function Home() {
   function handleAdd(task: Omit<Task, 'id' | 'createdAt'>) {
     addTask(task)
     refresh()
+  }
+
+  if (loading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-4xl mb-3">⚡</p>
+          <p className="text-sm text-[var(--text-muted)]">Loading your planner...</p>
+        </div>
+      </main>
+    )
   }
 
   return (
