@@ -114,15 +114,15 @@ function TaskRow({ task, onToggle, onDelete }: { task: Task; onToggle: () => voi
       'flex items-center gap-3 px-4 py-3 bg-[var(--card)] border-b border-[var(--border)] last:border-0 transition-all',
       isDone && 'opacity-50'
     )}>
-      {/* Checkbox */}
-      <button onClick={onToggle} className="flex-shrink-0">
+      {/* Checkbox — large touch target */}
+      <button onClick={onToggle} className="flex-shrink-0 p-2 -m-2 active:scale-90 transition-transform">
         <div className={cn(
-          'w-[22px] h-[22px] rounded-full border-2 flex items-center justify-center transition-all',
+          'w-[28px] h-[28px] rounded-full border-2 flex items-center justify-center transition-all',
           isDone ? 'bg-[var(--accent)] border-[var(--accent)]' : 
           task.priority === 'high' ? 'border-red-400' : 
           task.priority === 'medium' ? 'border-amber-400' : 'border-[var(--text-muted)]'
         )}>
-          {isDone && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+          {isDone && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
         </div>
       </button>
 
@@ -238,33 +238,58 @@ function MyDayView({ tasks, onToggle, onDelete, onAdd }: {
         )
       })()}
 
-      {/* Today's tasks — To Do style */}
-      <div>
-        <div className="flex items-center justify-between px-1 mb-2">
-          <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">Tasks</h2>
-          <button onClick={onAdd} className="text-xs text-[var(--accent)] font-medium">+ Add task</button>
-        </div>
-        {todayTasks.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-4xl mb-3">☀️</p>
-            <p className="text-sm text-[var(--text-muted)]">No tasks for today</p>
-            <p className="text-xs text-[var(--text-muted)] mt-1">Use the 🎤 button to brain dump</p>
-          </div>
-        ) : (
-          <div className="rounded-xl overflow-hidden">
-            {todayTasks
-              .sort((a, b) => {
-                if (a.status === 'done' && b.status !== 'done') return 1
-                if (a.status !== 'done' && b.status === 'done') return -1
-                const po = { high: 0, medium: 1, low: 2 }
-                return po[a.priority] - po[b.priority]
-              })
-              .map(t => (
-                <TaskRow key={t.id} task={t} onToggle={() => onToggle(t.id)} onDelete={() => onDelete(t.id)} />
-              ))}
-          </div>
-        )}
-      </div>
+      {/* Today's tasks — split into active + done */}
+      {(() => {
+        const active = todayTasks.filter(t => t.status !== 'done')
+        const completed = todayTasks.filter(t => t.status === 'done')
+        return (
+          <>
+            <div>
+              <div className="flex items-center justify-between px-1 mb-2">
+                <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">Tasks</h2>
+                <button onClick={onAdd} className="text-xs text-[var(--accent)] font-medium">+ Add task</button>
+              </div>
+              {active.length === 0 && completed.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-4xl mb-3">☀️</p>
+                  <p className="text-sm text-[var(--text-muted)]">No tasks for today</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">Use the 🎤 button to brain dump</p>
+                </div>
+              ) : active.length === 0 ? (
+                <div className="text-center py-6">
+                  <p className="text-2xl mb-1">🎉</p>
+                  <p className="text-sm text-[var(--text-muted)]">All done for today!</p>
+                </div>
+              ) : (
+                <div className="rounded-xl overflow-hidden">
+                  {active
+                    .sort((a, b) => {
+                      const po = { high: 0, medium: 1, low: 2 }
+                      return po[a.priority] - po[b.priority]
+                    })
+                    .map(t => (
+                      <TaskRow key={t.id} task={t} onToggle={() => onToggle(t.id)} onDelete={() => onDelete(t.id)} />
+                    ))}
+                </div>
+              )}
+            </div>
+
+            {/* Completed tasks */}
+            {completed.length > 0 && (
+              <div>
+                <h2 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide px-1 mb-2">
+                  ✅ Done ({completed.length})
+                </h2>
+                <div className="rounded-xl overflow-hidden">
+                  {completed.map(t => (
+                    <TaskRow key={t.id} task={t} onToggle={() => onToggle(t.id)} onDelete={() => onDelete(t.id)} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )
+      })()}
 
       {/* What should I do next? */}
       <WhatNext />
@@ -406,11 +431,11 @@ function LogView({ tasks }: { tasks: Task[] }) {
         <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-3">🔒 Non-Negotiables</h2>
         {[
           { label: 'Morning routine', emoji: '🙏' },
-          { label: 'Physical training', emoji: '💪' },
           { label: 'Outreach (min. 1)', emoji: '📞' },
+          { label: 'Post 1 piece of content', emoji: '📱' },
         ].map(nn => (
-          <label key={nn.label} className="flex items-center gap-3 py-2.5 cursor-pointer">
-            <input type="checkbox" className="w-5 h-5 accent-[var(--accent)] rounded" />
+          <label key={nn.label} className="flex items-center gap-3 py-2.5 cursor-pointer active:scale-[0.98] transition-transform">
+            <input type="checkbox" className="w-6 h-6 accent-[var(--accent)] rounded" />
             <span className="text-[15px]">{nn.emoji} {nn.label}</span>
           </label>
         ))}
