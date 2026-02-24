@@ -7,7 +7,10 @@ export interface RunWorkout {
   notes?: string
 }
 
-const PLAN_START = new Date('2026-02-03T00:00:00') // Week 1 Monday
+// Plan runs Mon-Sun each week. Week 1 starts the week of Feb 3.
+// Feb 3 is Tuesday, so Week 1 Monday = Feb 2 (no workout planned, plan starts Tue).
+// We align to the Monday so day-of-week labels match real calendar.
+const PLAN_START = new Date('2026-02-02T00:00:00') // Monday of Week 1
 
 // Returns the workout for a given date, or null if outside the plan
 export function getRunWorkout(dateStr: string): RunWorkout | null {
@@ -17,8 +20,8 @@ export function getRunWorkout(dateStr: string): RunWorkout | null {
   if (diffDays < 0 || diffDays >= 38 * 7) return null
   
   const week = Math.floor(diffDays / 7) + 1 // 1-indexed
-  const dayOfWeek = diffDays % 7 // 0=Mon, 1=Tue, ..., 6=Sun
-
+  const dayOfWeek = diffDays % 7 // 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
+  
   const workout = PLAN[week]?.[dayOfWeek]
   return workout || null
 }
