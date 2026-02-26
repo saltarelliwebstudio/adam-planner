@@ -366,6 +366,19 @@ export function generateRecurringTasks(dateStr: string) {
   }
 }
 
+// ── Generate tasks for a date range (useful for week view) ──
+export function generateRecurringTasksForRange(startDate: string, endDate: string) {
+  const start = new Date(startDate + 'T12:00:00')
+  const end = new Date(endDate + 'T12:00:00')
+  const current = new Date(start)
+  
+  while (current <= end) {
+    const dateStr = current.toISOString().split('T')[0]
+    generateRecurringTasks(dateStr)
+    current.setDate(current.getDate() + 1)
+  }
+}
+
 // ── Date helpers ──
 
 export function today(): string {

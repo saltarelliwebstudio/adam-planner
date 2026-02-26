@@ -9,7 +9,7 @@ import { getBlocksForDay, getFreeHours, DAY_NAMES } from '@/lib/schedule'
 import {
   getTasks, addTask, updateTask, saveTasks,
   today, getOverdueTasks,
-  generateRecurringTasks,
+  generateRecurringTasks, generateRecurringTasksForRange,
   getIcebox, addToIcebox, removeFromIcebox, getRandomIceboxIdea, IceboxIdea,
   initStore,
 } from '@/lib/store'
@@ -549,7 +549,12 @@ export default function Home() {
 
   useEffect(() => {
     initStore().then(() => {
-      generateRecurringTasks(today())
+      const todayDate = today()
+      // Generate tasks for today and the next 13 days (2 weeks)
+      const endDate = new Date(todayDate + 'T12:00:00')
+      endDate.setDate(endDate.getDate() + 13)
+      const endDateStr = endDate.toISOString().split('T')[0]
+      generateRecurringTasksForRange(todayDate, endDateStr)
       setTasks(getTasks())
       setLoading(false)
     })

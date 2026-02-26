@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Task } from '@/lib/types'
 import { getBlocksForDay, getFreeHours, DAY_NAMES } from '@/lib/schedule'
-import { today, getWeekStart, addTask } from '@/lib/store'
+import { today, getWeekStart, addTask, generateRecurringTasksForRange } from '@/lib/store'
 
 function cn(...c: (string | false | undefined)[]) { return c.filter(Boolean).join(' ') }
 
@@ -55,6 +55,15 @@ export default function WeekGrid({ tasks, onRefresh }: { tasks: Task[]; onRefres
       freeHrs: getFreeHours(dt.getDay()),
     }
   })
+
+  // Generate recurring tasks (including running plan) for the current week
+  useEffect(() => {
+    const weekStart = days[0].dateStr
+    const weekEnd = days[6].dateStr
+    generateRecurringTasksForRange(weekStart, weekEnd)
+    // Refresh tasks after generating new ones
+    setTimeout(() => onRefresh(), 100)
+  }, [weekOffset, onRefresh, days])
 
   const selectedDay = selectedDate ? days.find(d => d.dateStr === selectedDate) : null
 
