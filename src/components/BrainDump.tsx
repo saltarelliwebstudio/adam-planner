@@ -55,16 +55,18 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
 
   function startListening() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) { alert('Use Chrome for voice input'); return }
+    if (!SR) { alert('Voice input requires Chrome or Safari'); return }
 
     const r = new SR()
     recognitionRef.current = r
     r.continuous = true
     r.interimResults = true
-    r.lang = 'en-CA'
+    r.lang = 'en-US' // Changed from en-CA for better reliability
 
     let processedUpTo = 0
     let finalText = ''
+    let restartTimeout: NodeJS.Timeout | null = null
+    
     r.onresult = (e: SpeechRecognitionEvent) => {
       let newFinal = ''
       let interim = ''
@@ -78,19 +80,53 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
       }
       finalText += newFinal
       setTranscript(finalText + interim)
+      
+      // Reset restart timer when we get speech
+      if (restartTimeout) {
+        clearTimeout(restartTimeout)
+        restartTimeout = null
+      }
     }
 
     r.onend = () => {
-      if (step === 'listening') try { r.start() } catch { /* */ }
+      if (step === 'listening') {
+        // Auto-restart after a short delay if still listening
+        restartTimeout = setTimeout(() => {
+          try { 
+            if (step === 'listening') r.start() 
+          } catch (err) { 
+            console.log('Speech recognition restart failed:', err)
+          }
+        }, 100)
+      }
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    r.onerror = (e: any) => { if (e.error !== 'no-speech') console.error(e.error) }
 
-    r.start()
-    setStep('listening')
-    setTranscript('')
-    setDuration(0)
-    timerRef.current = setInterval(() => setDuration(d => d + 1), 1000)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    r.onerror = (e: any) => { 
+      console.log('Speech recognition error:', e.error)
+      if (e.error === 'not-allowed') {
+        alert('Please allow microphone access and try again')
+        setStep('idle')
+      } else if (e.error === 'network') {
+        alert('Network error - check your connection')
+        setStep('idle')
+      }
+      // Don't alert for common non-critical errors
+      if (!['no-speech', 'audio-capture', 'aborted'].includes(e.error)) {
+        console.error('Speech recognition error:', e.error)
+      }
+    }
+
+    try {
+      r.start()
+      setStep('listening')
+      setTranscript('')
+      setDuration(0)
+      timerRef.current = setInterval(() => setDuration(d => d + 1), 1000)
+    } catch (err) {
+      alert('Failed to start voice input. Please check microphone permissions.')
+      console.error('Speech recognition start failed:', err)
+    }
   }
 
   function stopAndProcess() {
@@ -232,7 +268,15 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
               className="w-20 h-20 rounded-full bg-[var(--accent)] flex items-center justify-center active:scale-90 transition-transform shadow-lg">
               <span className="text-4xl">🎤</span>
             </button>
-            <p className="text-xs text-[var(--text-muted)]">Works best in Chrome</p>
+            <div className="text-center">
+              <p className="text-xs text-[var(--text-muted)]">
+                {window.SpeechRecognition || window.webkitSpeechRecognition 
+                  ? '✅ Voice input ready' 
+                  : '❌ Voice input not supported'
+                }
+              </p>
+              <p className="text-xs text-[var(--text-muted)] mt-1">Best in Chrome/Safari</p>
+            </div>
           </div>
         )}
 
@@ -300,7 +344,7 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
 
             {/* Items — tap to edit */}
             <h3 className="text-sm font-semibold text-[var(--text-muted)]">
-              {result.items.length} TASKS — tap to edit, uncheck to skip
+              {result.items.length} TASKS — tap any task to edit details ✏️
             </h3>
             {result.items.map((item, i) => {
               const isEditing = editingIdx === i
@@ -322,7 +366,10 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
                     </button>
 
                     {/* Content — tap to expand */}
-                    <div className="flex-1 min-w-0" onClick={() => setEditingIdx(isEditing ? null : i)}>
+                    <div className={cn(
+                      "flex-1 min-w-0 cursor-pointer transition-all rounded-lg p-2 -m-2",
+                      isEditing ? "bg-[var(--accent)]/10" : "hover:bg-[var(--card-hover)]"
+                    )} onClick={() => setEditingIdx(isEditing ? null : i)}>
                       <p className="text-[15px] font-medium">{item.title}</p>
                       <div className="flex flex-wrap gap-2 mt-1.5">
                         <span className="text-xs text-[var(--text-muted)]">📅 {fmtDate(item.scheduledDate)}</span>
@@ -335,10 +382,13 @@ export default function BrainDump({ onDone }: { onDone: () => void }) {
                         )}>{item.priority}</span>
                       </div>
                       {item.conflict && <p className="text-xs text-[var(--warning)] mt-1">⚠️ {item.conflict}</p>}
+                      {isEditing && <p className="text-xs text-[var(--accent)] mt-1">✏️ Tap fields below to edit</p>}
                     </div>
 
                     {/* Edit indicator */}
-                    <span className="text-xs text-[var(--text-muted)] mt-1">{isEditing ? '▲' : '✏️'}</span>
+                    <span className={cn("text-sm mt-1 transition-colors", 
+                      isEditing ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+                    )}>{isEditing ? '▼' : '✏️'}</span>
                   </div>
 
                   {/* Expanded edit form */}
