@@ -405,8 +405,8 @@ function LogView({ tasks }: { tasks: Task[] }) {
         <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-3">🔒 Non-Negotiables</h2>
         {[
           { label: 'Morning routine', emoji: '🙏' },
-          { label: 'Physical training', emoji: '💪' },
           { label: 'Outreach (min. 1)', emoji: '📞' },
+          { label: '10 mins of reading a day', emoji: '📚' },
         ].map(nn => (
           <label key={nn.label} className="flex items-center gap-3 py-2.5 cursor-pointer">
             <input type="checkbox" className="w-5 h-5 accent-[var(--accent)] rounded" />
