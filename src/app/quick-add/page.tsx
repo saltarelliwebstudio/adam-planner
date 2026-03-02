@@ -121,7 +121,7 @@ export default function QuickAddPage() {
             <li>Open Shortcuts app on iPhone</li>
             <li>Create new shortcut</li>
             <li>Add "Ask for Input" (Text)</li>
-            <li>Add "Get Contents of URL" → POST to: <code className="bg-[var(--bg)] px-1 rounded">{window.location.origin}/api/quick-add</code></li>
+            <li>Add "Get Contents of URL" → POST to: <code className="bg-[var(--bg)] px-1 rounded">{typeof window !== 'undefined' ? window.location.origin : 'https://adam-planner.vercel.app'}/api/quick-add</code></li>
             <li>In Request Body: <code className="bg-[var(--bg)] px-1 rounded">{`{"text": "{{Provided Input}}"}`}</code></li>
             <li>Add to Siri: "Add to my planner"</li>
           </ol>
