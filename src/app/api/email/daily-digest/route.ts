@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
         status: task.status,
         daysUntilDeadline: Math.ceil((new Date(task.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)),
       })),
-      big3: big3Data?.items || ['Morning routine', 'Outreach (min. 1)', 'Post 1 piece of content'],
+      big3: big3Data?.items || ['Morning routine', 'Post 2 pieces of content'],
       completedYesterday: yesterdayCompleted?.length || 0,
     };
 

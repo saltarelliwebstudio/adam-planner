@@ -291,11 +291,12 @@ export interface RecurringTask {
 
 const RECURRING_TASKS: RecurringTask[] = [
   { title: '🙏 Morning routine (pray, bed, cold shower, exercise, stretch, read)', category: 'health', priority: 'high' },
-  { title: '📞 Outreach — reach out to 1 person', category: 'business', priority: 'high' },
-  { title: '📱 Post 1 piece of content', category: 'business', priority: 'high' },
+
+  { title: '📱 Post 2 pieces of content', category: 'business', priority: 'high' },
   { title: '🔍 Check client apps, automations & dashboards', category: 'client', priority: 'high', dayOfWeek: 6 },
   { title: '💰 Log business expenses for the week', category: 'business', priority: 'high', dayOfWeek: 0 },
   { title: '📋 Prep for next week — review schedule & goals', category: 'business', priority: 'high', dayOfWeek: 0 },
+  { title: '🎬 Create content', category: 'business', priority: 'high', dayOfWeek: 0 },
 ]
 
 const MONTHLY_TASKS = [

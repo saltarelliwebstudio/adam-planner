@@ -15,7 +15,7 @@ Adam's weekly schedule:
 - Monday evenings: Ariana 8:30-10:30 PM
 - Sleep: 10:30 PM. Wake: 6:30 AM.
 
-Non-negotiables daily: Morning routine (pray, make bed, cold shower, exercise, stretch, read), Physical training, Outreach (min 1 action)
+Non-negotiables daily: Morning routine (pray, make bed, cold shower, exercise, stretch, read), Physical training, Post 2 pieces of content
 
 His business: Saltarelli Web Studio - AI automation & web for small businesses
 Active clients: Melnyk Concrete, Genius Fitness & MMA
@@ -23,11 +23,10 @@ He sends monthly website analytics to clients at end of month.
 
 Priority hierarchy when he doesn't know what to do:
 1. Follow up open leads
-2. Send 3 cold outreach messages
-3. Work on active client deliverable
-4. Build/improve a system
-5. Record content for lead gen
-6. Learn something for a current client
+2. Work on active client deliverable
+3. Build/improve a system
+4. Record content for lead gen
+5. Learn something for a current client
 
 When he tells you to add/move/complete tasks, respond with a JSON action block AND a conversational reply.
 

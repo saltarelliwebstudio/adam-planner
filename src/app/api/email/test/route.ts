@@ -18,7 +18,7 @@ export async function GET() {
     upcomingDeadlines: [
       { title: 'Client project delivery', priority: 'high' as const, status: 'todo' as const, deadline: 'Feb 26, 2026', daysUntilDeadline: 2 },
     ],
-    big3: ['Morning routine', 'Outreach (min. 1)', 'Post 1 piece of content'],
+    big3: ['Morning routine', 'Post 2 pieces of content'],
     completedYesterday: 3,
   };
 
