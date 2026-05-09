@@ -11,6 +11,7 @@ export interface Task {
   createdAt: string
   completedAt?: string
   rolledFrom?: string // date it was rolled from
+  source?: string // 'user' | 'recurring' | 'telegram' | 'web' | 'api' | 'siri'
 }
 
 export interface TimeBlock {
@@ -46,6 +47,54 @@ export interface ClientAnalytics {
   websiteUrl?: string
   lastSent?: string // ISO date of last analytics send
   notes?: string
+}
+
+export interface ScheduleBlock {
+  id: string
+  label: string
+  emoji: string
+  dayOfWeek: number // 0=Sun, 1=Mon, ...6=Sat
+  startTime: string // HH:MM
+  endTime: string // HH:MM
+  locked: boolean
+  skippable: boolean
+  category?: string
+  sortOrder: number
+}
+
+export interface ScheduleOverride {
+  id: string
+  date: string // YYYY-MM-DD
+  blockId?: string // null for adhoc
+  overrideType: 'skip' | 'move' | 'adhoc'
+  label?: string
+  emoji?: string
+  startTime?: string
+  endTime?: string
+  locked: boolean
+}
+
+export interface ResolvedBlock {
+  id: string
+  start: string // HH:MM
+  end: string // HH:MM
+  label: string
+  emoji: string
+  locked: boolean
+  skippable: boolean
+  isOverride: boolean
+  overrideType?: 'skip' | 'move' | 'adhoc'
+  blockId?: string // original schedule_block id (for skipping/moving)
+}
+
+export interface WeeklyRecap {
+  id: string
+  weekStart: string
+  timeByCategory: Record<string, number>
+  tasksCompleted: number
+  tasksOverdue: number
+  streaks: Record<string, number>
+  highlights: string[]
 }
 
 export type ViewMode = 'today' | 'week' | 'tasks' | 'log'

@@ -1,6 +1,10 @@
 import { Task, DailyLog } from './types'
 import { supabase } from './supabase'
 import { getRunWorkout } from './running-plan'
+import { loadTimeEntries } from './time-store'
+import { loadScheduleBlocks, loadOverridesForRange } from './schedule-store'
+import type { RealtimeChannel } from '@supabase/supabase-js'
+import { toast } from 'sonner'
 
 // ── In-memory cache (synced with Supabase) ──
 let tasksCache: Task[] = []
@@ -10,9 +14,93 @@ let iceboxCacheLoaded = false
 let recurringCache: Set<string> = new Set()
 let recurringCacheLoaded = false
 
+// ── Inflight write tracking (prevents realtime races wiping optimistic state) ──
+const inflightTaskIds = new Set<string>()
+const inflightIceboxIds = new Set<string>()
+
+// ── Pub-sub (drives UI re-renders on cache changes from any source) ──
+type Subscriber = () => void
+const subscribers = new Set<Subscriber>()
+
+export function onStoreChange(cb: Subscriber): () => void {
+  subscribers.add(cb)
+  return () => { subscribers.delete(cb) }
+}
+
+function notifySubscribers() {
+  for (const s of subscribers) {
+    try { s() } catch (e) { console.error('store subscriber error', e) }
+  }
+}
+
+function rangeForToday(): { start: string; end: string } {
+  const start = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' })
+  const endDate = new Date(start + 'T12:00:00')
+  endDate.setDate(endDate.getDate() + 13)
+  return { start, end: endDate.toISOString().split('T')[0] }
+}
+
 // ── Init: load from Supabase ──
 export async function initStore(): Promise<void> {
-  await Promise.all([loadTasks(), loadIcebox(), loadRecurring()])
+  const { start, end } = rangeForToday()
+
+  await Promise.all([
+    loadTasks(),
+    loadIcebox(),
+    loadRecurring(),
+    loadTimeEntries(),
+    loadScheduleBlocks(),
+    loadOverridesForRange(start, end),
+  ])
+  notifySubscribers()
+}
+
+// ── Refresh: re-pull everything (called on visibility/focus) ──
+export async function refreshAll(): Promise<void> {
+  const { start, end } = rangeForToday()
+  await Promise.all([
+    loadTasks(),
+    loadIcebox(),
+    loadRecurring(),
+    loadTimeEntries(),
+    loadScheduleBlocks(),
+    loadOverridesForRange(start, end),
+  ])
+  notifySubscribers()
+}
+
+// ── Realtime: cross-device sync via Supabase postgres_changes ──
+let realtimeChannel: RealtimeChannel | null = null
+
+export function subscribeRealtime(): () => void {
+  if (realtimeChannel) return () => {}
+
+  realtimeChannel = supabase
+    .channel('planner-sync')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'planner_tasks' }, () => {
+      loadTasks().then(notifySubscribers)
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'planner_icebox' }, () => {
+      loadIcebox().then(notifySubscribers)
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_overrides' }, () => {
+      const { start, end } = rangeForToday()
+      loadOverridesForRange(start, end).then(notifySubscribers)
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_blocks' }, () => {
+      loadScheduleBlocks().then(notifySubscribers)
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'time_entries' }, () => {
+      loadTimeEntries().then(notifySubscribers)
+    })
+    .subscribe()
+
+  return () => {
+    if (realtimeChannel) {
+      supabase.removeChannel(realtimeChannel)
+      realtimeChannel = null
+    }
+  }
 }
 
 async function loadTasks(): Promise<void> {
@@ -21,7 +109,10 @@ async function loadTasks(): Promise<void> {
     .select('*')
     .order('created_at', { ascending: true })
   if (data) {
-    tasksCache = data.map(rowToTask)
+    const serverIds = new Set(data.map((r: { id: string }) => r.id))
+    // Preserve optimistic local rows whose insert hasn't committed yet
+    const optimisticOnly = tasksCache.filter(t => inflightTaskIds.has(t.id) && !serverIds.has(t.id))
+    tasksCache = [...data.map(rowToTask), ...optimisticOnly]
     tasksCacheLoaded = true
   }
 }
@@ -32,7 +123,15 @@ async function loadIcebox(): Promise<void> {
     .select('*')
     .order('created_at', { ascending: false })
   if (data) {
-    iceboxCache = data.map(r => ({ id: r.id, text: r.text, createdAt: r.created_at }))
+    const serverIds = new Set(data.map((r: { id: string }) => r.id))
+    const optimisticOnly = iceboxCache.filter(i => inflightIceboxIds.has(i.id) && !serverIds.has(i.id))
+    // Filter out internal metadata entries (reminders + bot context)
+    iceboxCache = [
+      ...data
+        .filter(r => !r.text.startsWith('REM|') && !r.text.startsWith('CTX|'))
+        .map(r => ({ id: r.id, text: r.text, createdAt: r.created_at })),
+      ...optimisticOnly,
+    ]
     iceboxCacheLoaded = true
   }
 }
@@ -59,6 +158,7 @@ function rowToTask(r: Record<string, unknown>): Task {
     createdAt: r.created_at as string,
     completedAt: r.completed_at as string | undefined,
     rolledFrom: r.rolled_from as string | undefined,
+    source: r.source as string | undefined,
   }
 }
 
@@ -75,6 +175,7 @@ function taskToRow(t: Partial<Task> & { id?: string }) {
   if (t.notes !== undefined) row.notes = t.notes
   if (t.completedAt !== undefined) row.completed_at = t.completedAt
   if (t.rolledFrom !== undefined) row.rolled_from = t.rolledFrom
+  if (t.source !== undefined) row.source = t.source
   return row
 }
 
@@ -85,19 +186,26 @@ export function getTasks(): Task[] {
 }
 
 export function saveTasks(tasks: Task[]) {
+  const prev = tasksCache
   tasksCache = tasks
-  // Full sync: delete all and re-insert (used for bulk operations like delete)
-  // We handle this async - fire and forget
-  _syncAllTasks(tasks)
-}
-
-async function _syncAllTasks(tasks: Task[]) {
-  // Delete tasks not in the new list
-  const ids = new Set(tasks.map(t => t.id))
-  const toDelete = tasksCache.filter(t => !ids.has(t.id))
-  for (const t of toDelete) {
-    await supabase.from('planner_tasks').delete().eq('id', t.id)
-  }
+  notifySubscribers()
+  // Reconcile deletes against server with rollback on failure
+  const newIds = new Set(tasks.map(t => t.id))
+  const toDelete = prev.filter(t => !newIds.has(t.id))
+  if (toDelete.length === 0) return
+  ;(async () => {
+    const failed: Task[] = []
+    for (const t of toDelete) {
+      const { error } = await supabase.from('planner_tasks').delete().eq('id', t.id)
+      if (error) failed.push(t)
+    }
+    if (failed.length > 0) {
+      // Restore failed deletions
+      tasksCache = [...tasksCache, ...failed]
+      toast.error(`Couldn't delete ${failed.length} task${failed.length > 1 ? 's' : ''} — check connection`)
+      notifySubscribers()
+    }
+  })()
 }
 
 export function addTask(task: Omit<Task, 'id' | 'createdAt'>): Task {
@@ -107,17 +215,37 @@ export function addTask(task: Omit<Task, 'id' | 'createdAt'>): Task {
     createdAt: new Date().toISOString(),
   }
   tasksCache.push(newTask)
-  // Async insert
-  supabase.from('planner_tasks').insert(taskToRow(newTask)).then()
+  inflightTaskIds.add(newTask.id)
+  notifySubscribers()
+  ;(async () => {
+    const { error } = await supabase.from('planner_tasks').insert(taskToRow(newTask))
+    inflightTaskIds.delete(newTask.id)
+    if (error) {
+      tasksCache = tasksCache.filter(t => t.id !== newTask.id)
+      toast.error('Failed to save task — check connection')
+      notifySubscribers()
+    }
+  })()
   return newTask
 }
 
 export function updateTask(id: string, updates: Partial<Task>) {
   const idx = tasksCache.findIndex(t => t.id === id)
   if (idx >= 0) {
-    tasksCache[idx] = { ...tasksCache[idx], ...updates }
-    // Async update
-    supabase.from('planner_tasks').update(taskToRow(updates)).eq('id', id).then()
+    const prev = tasksCache[idx]
+    tasksCache[idx] = { ...prev, ...updates }
+    inflightTaskIds.add(id)
+    notifySubscribers()
+    ;(async () => {
+      const { error } = await supabase.from('planner_tasks').update(taskToRow(updates)).eq('id', id)
+      inflightTaskIds.delete(id)
+      if (error) {
+        const stillIdx = tasksCache.findIndex(t => t.id === id)
+        if (stillIdx >= 0) tasksCache[stillIdx] = prev
+        toast.error('Failed to update task — check connection')
+        notifySubscribers()
+      }
+    })()
   }
   return tasksCache
 }
@@ -265,13 +393,33 @@ export function getIcebox(): IceboxIdea[] {
 export function addToIcebox(text: string): IceboxIdea {
   const idea: IceboxIdea = { id: crypto.randomUUID(), text, createdAt: new Date().toISOString() }
   iceboxCache.push(idea)
-  supabase.from('planner_icebox').insert({ id: idea.id, text }).then()
+  inflightIceboxIds.add(idea.id)
+  notifySubscribers()
+  ;(async () => {
+    const { error } = await supabase.from('planner_icebox').insert({ id: idea.id, text })
+    inflightIceboxIds.delete(idea.id)
+    if (error) {
+      iceboxCache = iceboxCache.filter(i => i.id !== idea.id)
+      toast.error('Failed to save idea — check connection')
+      notifySubscribers()
+    }
+  })()
   return idea
 }
 
 export function removeFromIcebox(id: string) {
+  const removed = iceboxCache.find(i => i.id === id)
   iceboxCache = iceboxCache.filter(i => i.id !== id)
-  supabase.from('planner_icebox').delete().eq('id', id).then()
+  notifySubscribers()
+  if (!removed) return
+  ;(async () => {
+    const { error } = await supabase.from('planner_icebox').delete().eq('id', id)
+    if (error) {
+      iceboxCache = [...iceboxCache, removed]
+      toast.error('Failed to remove idea — check connection')
+      notifySubscribers()
+    }
+  })()
 }
 
 export function getRandomIceboxIdea(): IceboxIdea | null {
@@ -291,9 +439,8 @@ export interface RecurringTask {
 
 const RECURRING_TASKS: RecurringTask[] = [
   { title: '🙏 Morning routine (pray, bed, cold shower, exercise, stretch, read)', category: 'health', priority: 'high' },
-
-  { title: '📱 Post 2 pieces of content', category: 'business', priority: 'high' },
   { title: '🔍 Check client apps, automations & dashboards', category: 'client', priority: 'high', dayOfWeek: 6 },
+  { title: '📞 Check in with cold callers — booking pace, blockers, payouts, anyone going cold', category: 'business', priority: 'high', dayOfWeek: 6 },
   { title: '💰 Log business expenses for the week', category: 'business', priority: 'high', dayOfWeek: 0 },
   { title: '📋 Prep for next week — review schedule & goals', category: 'business', priority: 'high', dayOfWeek: 0 },
   { title: '🎬 Create content', category: 'business', priority: 'high', dayOfWeek: 0 },
@@ -317,6 +464,7 @@ export function generateRecurringTasks(dateStr: string) {
           priority: task.priority,
           scheduledDate: dateStr,
           status: 'todo',
+          source: 'recurring',
         })
         recurringCache.add(key)
         supabase.from('planner_recurring_generated').insert({ key }).then()
@@ -333,14 +481,17 @@ export function generateRecurringTasks(dateStr: string) {
         easy: 'health', long: 'health', tempo: 'health', intervals: 'health',
         mp: 'health', strength: 'health', ma: 'health', cross: 'health',
         rest: 'personal', race: 'health',
+        back_to_back: 'health', shakeout: 'health', night_run: 'health',
+        walk: 'personal', recovery_walk: 'personal',
       }
       addTask({
         title: runWorkout.title,
         category: categoryMap[runWorkout.type] || 'health',
-        priority: runWorkout.type === 'race' ? 'high' : runWorkout.type === 'rest' ? 'low' : 'medium',
+        priority: runWorkout.type === 'race' ? 'high' : ['rest', 'walk', 'recovery_walk'].includes(runWorkout.type) ? 'low' : 'medium',
         scheduledDate: dateStr,
         status: 'todo',
         notes: runWorkout.notes,
+        source: 'recurring',
       })
       recurringCache.add(runKey)
       supabase.from('planner_recurring_generated').insert({ key: runKey }).then()
@@ -349,7 +500,7 @@ export function generateRecurringTasks(dateStr: string) {
 
   const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
   const currentDay = d.getDate()
-  if (currentDay === lastDay || currentDay >= 28) {
+  if (currentDay === lastDay) {
     for (const task of MONTHLY_TASKS) {
       const key = `${d.getFullYear()}-${d.getMonth()}:${task.title}`
       if (!recurringCache.has(key)) {
@@ -359,6 +510,7 @@ export function generateRecurringTasks(dateStr: string) {
           priority: task.priority,
           scheduledDate: dateStr,
           status: 'todo',
+          source: 'recurring',
         })
         recurringCache.add(key)
         supabase.from('planner_recurring_generated').insert({ key }).then()

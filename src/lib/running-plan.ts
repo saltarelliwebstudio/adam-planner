@@ -1,460 +1,288 @@
-// Sub-4 Hour Marathon Training Plan — Niagara Falls Oct 26, 2026
-// 38-week plan starting Feb 3, 2026
+// Dual-Event Training Plan — Port Colborne 100 (Jun 13) + Niagara Falls Marathon (Oct 26, Sub-4:00)
+// Override: April 11 → June 13 = PC100 block. June 16 → Oct 25 = Marathon block.
 
 export interface RunWorkout {
-  type: 'easy' | 'long' | 'tempo' | 'intervals' | 'mp' | 'strength' | 'ma' | 'cross' | 'rest' | 'race'
+  type: 'easy' | 'long' | 'tempo' | 'intervals' | 'mp' | 'strength' | 'ma' | 'cross' | 'rest' | 'race' | 'back_to_back' | 'shakeout' | 'night_run' | 'walk' | 'recovery_walk'
   title: string
   notes?: string
+  event?: 'pc100' | 'marathon'
+  distanceMiles?: number
+  targetPace?: string
 }
 
-// Plan runs Mon-Sun each week. Week 1 starts the week of Feb 3.
-// Feb 3 is Tuesday, so Week 1 Monday = Feb 2 (no workout planned, plan starts Tue).
-// We align to the Monday so day-of-week labels match real calendar.
-const PLAN_START = new Date('2026-02-02T00:00:00') // Monday of Week 1
+// ── Phase definitions with date ranges and weekly templates ──
+// Template keys: 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
 
-// Returns the workout for a given date, or null if outside the plan
+interface Phase {
+  start: string
+  end: string
+  phase: string
+  event: 'pc100' | 'marathon'
+  mileage: string
+  template: Record<number, RunWorkout>
+}
+
+const PHASES: Phase[] = [
+  // ═══════════════════════════════════════════════════════════
+  // PORT COLBORNE 100 — BLOCK OVERRIDE (Apr 11 → Jun 15)
+  // ═══════════════════════════════════════════════════════════
+
+  // PC100 BUILD (Apr 11 – May 9)
+  {
+    start: '2026-04-11', end: '2026-05-08',
+    phase: 'PC100 Build', event: 'pc100', mileage: '~25-35 mi',
+    template: {
+      0: { type: 'easy', title: 'Easy Run — 4-5 mi', event: 'pc100', distanceMiles: 4.5 },
+      1: { type: 'rest', title: 'Rest Day', event: 'pc100' },
+      2: { type: 'easy', title: 'Easy Run — 4-6 mi', event: 'pc100', distanceMiles: 5 },
+      3: { type: 'rest', title: 'Rest Day', event: 'pc100' },
+      4: { type: 'rest', title: 'Rest or Light Walk', event: 'pc100' },
+      5: { type: 'long', title: 'Long Run (see key runs)', event: 'pc100' },
+      6: { type: 'recovery_walk', title: 'Recovery Walk/Jog', event: 'pc100' },
+    },
+  },
+  // PC100 PEAK (May 9 – May 30)
+  {
+    start: '2026-05-09', end: '2026-05-30',
+    phase: 'PC100 Peak', event: 'pc100', mileage: '~30-40 mi',
+    template: {
+      0: { type: 'easy', title: 'Easy Run — 5-6 mi', event: 'pc100', distanceMiles: 5.5 },
+      1: { type: 'rest', title: 'Rest Day', event: 'pc100' },
+      2: { type: 'easy', title: 'Easy Run — 5-6 mi', event: 'pc100', distanceMiles: 5.5 },
+      3: { type: 'rest', title: 'Rest Day', event: 'pc100' },
+      4: { type: 'rest', title: 'Rest or Light Walk', event: 'pc100' },
+      5: { type: 'long', title: 'Long Run (see key runs)', event: 'pc100' },
+      6: { type: 'recovery_walk', title: 'Recovery Walk/Jog', event: 'pc100' },
+    },
+  },
+  // PC100 TAPER (May 31 – Jun 12)
+  {
+    start: '2026-05-31', end: '2026-06-12',
+    phase: 'PC100 Taper', event: 'pc100', mileage: '~15-20 mi',
+    template: {
+      0: { type: 'easy', title: 'Easy Run — 4 mi', event: 'pc100', distanceMiles: 4 },
+      1: { type: 'rest', title: 'Rest Day', event: 'pc100' },
+      2: { type: 'easy', title: 'Easy Run — 3 mi', event: 'pc100', distanceMiles: 3 },
+      3: { type: 'rest', title: 'Rest Day', event: 'pc100' },
+      4: { type: 'rest', title: 'Rest Day', event: 'pc100' },
+      5: { type: 'long', title: 'Taper Long Run (see key runs)', event: 'pc100' },
+      6: { type: 'recovery_walk', title: 'Recovery Walk/Jog or Rest', event: 'pc100' },
+    },
+  },
+  // RACE DAY + RECOVERY (Jun 13 – Jun 15)
+  {
+    start: '2026-06-13', end: '2026-06-15',
+    phase: 'PC100 Race + Recovery', event: 'pc100', mileage: '100 mi (race)',
+    template: {
+      // These 3 days are all date-overridden, template is fallback
+      0: { type: 'rest', title: 'Recovery', event: 'pc100' },
+      1: { type: 'rest', title: 'Recovery', event: 'pc100' },
+      2: { type: 'rest', title: 'Recovery', event: 'pc100' },
+      3: { type: 'rest', title: 'Recovery', event: 'pc100' },
+      4: { type: 'rest', title: 'Recovery', event: 'pc100' },
+      5: { type: 'rest', title: 'Recovery', event: 'pc100' },
+      6: { type: 'rest', title: 'Recovery', event: 'pc100' },
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // NIAGARA FALLS MARATHON — Sub-4:00 (Jun 16 → Oct 26)
+  // ═══════════════════════════════════════════════════════════
+
+  // MARATHON PHASE 1 — Base Rebuild (Jun 16 – Jul 13)
+  {
+    start: '2026-06-16', end: '2026-07-13',
+    phase: 'Marathon Base Rebuild', event: 'marathon', mileage: '~20-30 mi',
+    template: {
+      0: { type: 'rest', title: 'Rest Day', event: 'marathon' },
+      1: { type: 'easy', title: 'Easy Run — 4-5 mi', event: 'marathon', distanceMiles: 4.5 },
+      2: { type: 'rest', title: 'Rest Day', event: 'marathon' },
+      3: { type: 'easy', title: 'Easy Run — 5-6 mi', event: 'marathon', distanceMiles: 5.5 },
+      4: { type: 'rest', title: 'Rest Day', event: 'marathon' },
+      5: { type: 'long', title: 'Long Run (see key runs)', event: 'marathon' },
+      6: { type: 'rest', title: 'Rest or 20 min Walk', event: 'marathon' },
+    },
+  },
+  // MARATHON PHASE 2 — Build + Pace Work (Jul 14 – Aug 17)
+  {
+    start: '2026-07-14', end: '2026-08-17',
+    phase: 'Marathon Build', event: 'marathon', mileage: '~30-40 mi',
+    template: {
+      0: { type: 'rest', title: 'Rest Day', event: 'marathon' },
+      1: { type: 'easy', title: 'Easy Run — 5 mi', event: 'marathon', distanceMiles: 5 },
+      2: { type: 'tempo', title: 'Tempo/MP Workout (see key runs)', event: 'marathon' },
+      3: { type: 'rest', title: 'Rest Day', event: 'marathon' },
+      4: { type: 'easy', title: 'Easy Run — 4 mi', event: 'marathon', distanceMiles: 4 },
+      5: { type: 'long', title: 'Long Run (see key runs)', event: 'marathon' },
+      6: { type: 'rest', title: 'Rest Day', event: 'marathon' },
+    },
+  },
+  // MARATHON PHASE 3 — Peak (Aug 18 – Sep 21)
+  {
+    start: '2026-08-18', end: '2026-09-21',
+    phase: 'Marathon Peak', event: 'marathon', mileage: '~35-45 mi',
+    template: {
+      0: { type: 'rest', title: 'Rest Day', event: 'marathon' },
+      1: { type: 'easy', title: 'Easy Run — 5-6 mi', event: 'marathon', distanceMiles: 5.5 },
+      2: { type: 'tempo', title: 'Tempo/MP Workout (see key runs)', event: 'marathon' },
+      3: { type: 'rest', title: 'Rest or Easy 4 mi', event: 'marathon' },
+      4: { type: 'rest', title: 'Rest Day', event: 'marathon' },
+      5: { type: 'long', title: 'Long Run (see key runs)', event: 'marathon' },
+      6: { type: 'easy', title: 'Easy Run — 6 mi or Rest', event: 'marathon', distanceMiles: 6 },
+    },
+  },
+  // MARATHON PHASE 4 — Taper (Sep 22 – Oct 24)
+  {
+    start: '2026-09-22', end: '2026-10-24',
+    phase: 'Marathon Taper', event: 'marathon', mileage: '~15-25 mi',
+    template: {
+      0: { type: 'rest', title: 'Rest Day', event: 'marathon' },
+      1: { type: 'easy', title: 'Easy Run — 4 mi', event: 'marathon', distanceMiles: 4 },
+      2: { type: 'tempo', title: 'Short MP Run (see key runs)', event: 'marathon' },
+      3: { type: 'rest', title: 'Rest Day', event: 'marathon' },
+      4: { type: 'easy', title: 'Easy Run — 3 mi', event: 'marathon', distanceMiles: 3 },
+      5: { type: 'long', title: 'Taper Long Run (see key runs)', event: 'marathon' },
+      6: { type: 'rest', title: 'Rest Day', event: 'marathon' },
+    },
+  },
+  // MARATHON RACE DAY (Oct 25 — Sunday)
+  {
+    start: '2026-10-25', end: '2026-10-25',
+    phase: 'RACE DAY', event: 'marathon', mileage: '26.2 mi (race)',
+    template: {
+      0: { type: 'race', title: 'Niagara Falls Marathon — Sub-4:00', event: 'marathon', distanceMiles: 26.2, targetPace: '9:09/mi' },
+      1: { type: 'race', title: 'Niagara Falls Marathon — Sub-4:00', event: 'marathon', distanceMiles: 26.2, targetPace: '9:09/mi' },
+      2: { type: 'race', title: 'Niagara Falls Marathon — Sub-4:00', event: 'marathon', distanceMiles: 26.2, targetPace: '9:09/mi' },
+      3: { type: 'race', title: 'Niagara Falls Marathon — Sub-4:00', event: 'marathon', distanceMiles: 26.2, targetPace: '9:09/mi' },
+      4: { type: 'race', title: 'Niagara Falls Marathon — Sub-4:00', event: 'marathon', distanceMiles: 26.2, targetPace: '9:09/mi' },
+      5: { type: 'race', title: 'Niagara Falls Marathon — Sub-4:00', event: 'marathon', distanceMiles: 26.2, targetPace: '9:09/mi' },
+      6: { type: 'race', title: 'Niagara Falls Marathon — Sub-4:00', event: 'marathon', distanceMiles: 26.2, targetPace: '9:09/mi' },
+    },
+  },
+]
+
+// ── Date-specific overrides (key runs, race days, specific workouts) ──
+// These take priority over phase templates
+
+const DATE_WORKOUTS: Record<string, RunWorkout> = {
+  // ─── PC100 BUILD — Key Runs (Saturdays) ───
+  '2026-04-11': { type: 'long', title: 'Long Run — 10 mi (baseline)', event: 'pc100', distanceMiles: 10, notes: 'Baseline long run. Practice fueling every 35 min.' },
+  '2026-04-18': { type: 'long', title: 'Long Run — 13 mi', event: 'pc100', distanceMiles: 13, notes: 'First stretch past half marathon. Fuel every 35 min, real food at hour marks.' },
+  '2026-04-25': { type: 'back_to_back', title: 'Back-to-Back Day 1 — 14 mi', event: 'pc100', distanceMiles: 14, notes: 'Back-to-back weekend #1. Fuel every 35 min. Real food at every hour mark.' },
+  '2026-04-26': { type: 'back_to_back', title: 'Back-to-Back Day 2 — 7 mi', event: 'pc100', distanceMiles: 7, notes: 'Day 2 on tired legs. Easy pace, practice eating while running.' },
+  '2026-05-02': { type: 'long', title: 'Recovery Long Run — 10 mi', event: 'pc100', distanceMiles: 10, notes: 'Recovery week — drop 30% volume. Easy effort.' },
+
+  // ─── PC100 PEAK — Key Runs (Saturdays) ───
+  '2026-05-09': { type: 'long', title: 'Long Run — 18 mi (biggest yet)', event: 'pc100', distanceMiles: 18, notes: 'Full fueling protocol. Start embarrassingly slow. Walk breaks are a tool.' },
+  '2026-05-14': { type: 'night_run', title: 'Night Run — 6 mi with headlamp', event: 'pc100', distanceMiles: 6, notes: 'Race simulation — practice running in the dark. Test headlamp.' },
+  '2026-05-16': { type: 'back_to_back', title: 'Peak Back-to-Back Day 1 — 20-22 mi', event: 'pc100', distanceMiles: 21, notes: 'PEAK WEEKEND. Full fueling. After this: final gear decisions locked. Nothing new on race day.' },
+  '2026-05-17': { type: 'back_to_back', title: 'Peak Back-to-Back Day 2 — 10 mi', event: 'pc100', distanceMiles: 10, notes: 'Day 2 on peak tired legs. Easy pace.' },
+  '2026-05-23': { type: 'long', title: 'Confidence Run — 16 mi in full race-day gear', event: 'pc100', distanceMiles: 16, notes: 'Full race-day gear: shoes, socks, clothing, nutrition. Dress rehearsal.' },
+
+  // ─── PC100 TAPER — Key Runs (Saturdays) ───
+  '2026-05-30': { type: 'long', title: 'Taper Long Run — 8 mi', event: 'pc100', distanceMiles: 8, notes: 'Taper begins. Drop volume, maintain sharpness.' },
+  '2026-06-06': { type: 'shakeout', title: 'Shakeout — 5 mi', event: 'pc100', distanceMiles: 5, notes: 'Light and easy. Sleep more, eat more carbs this week.' },
+  '2026-06-11': { type: 'shakeout', title: 'Shakeout — 2 mi only', event: 'pc100', distanceMiles: 2, notes: 'Final shakeout. Stay loose.' },
+  '2026-06-12': { type: 'rest', title: 'Complete Rest — Race Tomorrow', event: 'pc100', notes: 'Complete rest. Carb load. Gear packed. Sleep early.' },
+
+  // ─── PC100 RACE DAY + RECOVERY ───
+  '2026-06-13': { type: 'race', title: 'PORT COLBORNE 100 — 100 Mile Track Race', event: 'pc100', distanceMiles: 100, notes: 'Start 5:30am at Lakeshore Catholic. 402-403 laps. Charging phase miles 1-40, controlled cruise 40-70, walk/run 4:1 miles 70-90, one more training run 90-100.' },
+  '2026-06-14': { type: 'recovery_walk', title: 'Post-Race Recovery — Sleep & Eat', event: 'pc100', notes: 'Sleep, eat, post raw finish reel. Walk only if moving.' },
+  '2026-06-15': { type: 'rest', title: 'Post-Race Rest — Walk & Foam Roll', event: 'pc100', notes: 'Walk only, full rest, foam roll. Marathon block begins tomorrow.' },
+
+  // ─── MARATHON BASE REBUILD — Key Long Runs (Saturdays) ───
+  '2026-06-20': { type: 'long', title: 'Long Run — 10 mi (first post-ultra)', event: 'marathon', distanceMiles: 10, notes: 'First long run post-ultra. Very easy pace. No pace targets — all runs by feel.' },
+  '2026-06-27': { type: 'long', title: 'Long Run — 11 mi', event: 'marathon', distanceMiles: 11 },
+  '2026-07-04': { type: 'long', title: 'Long Run — 13 mi', event: 'marathon', distanceMiles: 13 },
+  '2026-07-11': { type: 'long', title: 'Long Run — 14 mi', event: 'marathon', distanceMiles: 14 },
+
+  // ─── MARATHON BUILD — Key Long Runs (Saturdays) ───
+  '2026-07-18': { type: 'long', title: 'Long Run — 15 mi', event: 'marathon', distanceMiles: 15 },
+  '2026-07-25': { type: 'long', title: 'Long Run — 16 mi', event: 'marathon', distanceMiles: 16 },
+  '2026-08-01': { type: 'long', title: 'Long Run — 18 mi (first 18-miler)', event: 'marathon', distanceMiles: 18, notes: 'First 18-miler of marathon block.' },
+  '2026-08-08': { type: 'long', title: 'Long Run — 16 mi', event: 'marathon', distanceMiles: 16 },
+  '2026-08-15': { type: 'long', title: 'Recovery Long Run — 14 mi', event: 'marathon', distanceMiles: 14, notes: 'Recovery week.' },
+
+  // ─── MARATHON BUILD — Key Tempo/MP Workouts (Wednesdays) ───
+  '2026-07-15': { type: 'tempo', title: 'Tempo: 4 mi easy + 2 mi at MP + 1 mi cooldown', event: 'marathon', distanceMiles: 7, targetPace: '9:09/mi (MP miles)', notes: 'First MP work. Feel what sub-4 pace (9:09/mi) actually feels like.' },
+  '2026-07-22': { type: 'tempo', title: 'Tempo: 4 mi easy + 3 mi at MP + 1 mi cooldown', event: 'marathon', distanceMiles: 8, targetPace: '9:09/mi (MP miles)' },
+  '2026-07-29': { type: 'intervals', title: 'Intervals: 3 mi easy + 4x1 mi at tempo (8:30-8:45) w/ 90s rest', event: 'marathon', distanceMiles: 7, targetPace: '8:30-8:45/mi (intervals)' },
+  '2026-08-05': { type: 'tempo', title: 'Tempo: 3 mi easy + 5 mi at MP + 1 mi cooldown', event: 'marathon', distanceMiles: 9, targetPace: '9:09/mi (MP miles)' },
+  '2026-08-12': { type: 'easy', title: 'Recovery Week — Easy Run Only', event: 'marathon', distanceMiles: 5, notes: 'Recovery week — no tempo.' },
+
+  // ─── MARATHON PEAK — Key Long Runs (Saturdays) ───
+  '2026-08-22': { type: 'long', title: 'Long Run — 18 mi', event: 'marathon', distanceMiles: 18 },
+  '2026-08-29': { type: 'long', title: 'Long Run — 20 mi (first 20-miler)', event: 'marathon', distanceMiles: 20, notes: 'First 20-miler. Big day.' },
+  '2026-09-05': { type: 'long', title: 'Long Run — 18 mi', event: 'marathon', distanceMiles: 18 },
+  '2026-09-12': { type: 'long', title: 'Long Run — 22 mi (peak — 20 mi OK too)', event: 'marathon', distanceMiles: 22, notes: 'Peak long run. 20 mi is fine if 22 feels like too much.' },
+  '2026-09-19': { type: 'long', title: 'Recovery Long Run — 14 mi', event: 'marathon', distanceMiles: 14, notes: 'Recovery week.' },
+
+  // ─── MARATHON PEAK — Key Tempo/MP Workouts (Wednesdays) ───
+  '2026-08-19': { type: 'tempo', title: 'Tempo: 3 mi easy + 6 mi at MP + 1 mi cooldown', event: 'marathon', distanceMiles: 10, targetPace: '9:09/mi (MP miles)' },
+  '2026-08-26': { type: 'intervals', title: 'Intervals: 3 mi easy + 3x2 mi at tempo (8:30) w/ 2 min rest', event: 'marathon', distanceMiles: 9, targetPace: '8:30/mi (intervals)' },
+  '2026-09-02': { type: 'long', title: 'MP Long: 16 mi total, miles 10-14 at MP', event: 'marathon', distanceMiles: 16, targetPace: '9:09/mi (miles 10-14)', notes: 'Pace-specific long run. Hold MP for miles 10-14.' },
+  '2026-09-09': { type: 'tempo', title: 'Tempo: 3 mi easy + 8 mi at MP + 1 mi cooldown', event: 'marathon', distanceMiles: 12, targetPace: '9:09/mi (MP miles)' },
+  '2026-09-16': { type: 'long', title: 'MP Long: 20 mi — last 4 at MP if feeling strong', event: 'marathon', distanceMiles: 20, targetPace: '9:09/mi (last 4 mi)', notes: 'Optional MP finish. Only if feeling strong.' },
+
+  // ─── MARATHON TAPER — Key Runs (Saturdays) ───
+  '2026-09-26': { type: 'long', title: 'Taper Long Run — 16 mi (last double-digit)', event: 'marathon', distanceMiles: 16, notes: 'Last double-digit long run.' },
+  '2026-10-03': { type: 'long', title: 'Taper Long Run — 12 mi', event: 'marathon', distanceMiles: 12, notes: 'Drop volume 30%.' },
+  '2026-10-07': { type: 'mp', title: 'Short MP Run — 4 mi at MP', event: 'marathon', distanceMiles: 4, targetPace: '9:09/mi', notes: 'Last MP workout of the block.' },
+  '2026-10-10': { type: 'long', title: 'Taper Long Run — 10 mi', event: 'marathon', distanceMiles: 10 },
+  '2026-10-17': { type: 'long', title: 'Taper Long Run — 8 mi', event: 'marathon', distanceMiles: 8, notes: 'Easy only this week.' },
+
+  // ─── MARATHON RACE WEEK (Oct 19-25) ───
+  '2026-10-19': { type: 'easy', title: 'Race Week — Easy 4 mi', event: 'marathon', distanceMiles: 4 },
+  '2026-10-20': { type: 'shakeout', title: 'Race Week — 3 mi easy + 4x400m at goal pace', event: 'marathon', distanceMiles: 3, targetPace: '9:09/mi (400m reps)', notes: 'Short strides at goal pace. Stay sharp.' },
+  '2026-10-21': { type: 'rest', title: 'Race Week — Rest', event: 'marathon' },
+  '2026-10-22': { type: 'easy', title: 'Race Week — Easy 3 mi', event: 'marathon', distanceMiles: 3 },
+  '2026-10-23': { type: 'shakeout', title: 'Race Week — 2-3 mi shakeout', event: 'marathon', distanceMiles: 2.5, notes: 'Final shakeout. Stay loose.' },
+  '2026-10-24': { type: 'rest', title: 'Complete Rest — Race Tomorrow', event: 'marathon', notes: 'Complete rest. Carb load. Gear laid out. Sleep early.' },
+  '2026-10-25': { type: 'race', title: 'NIAGARA FALLS MARATHON — Sub-4:00', event: 'marathon', distanceMiles: 26.2, targetPace: '9:09/mi', notes: 'Miles 1-6: 9:20-9:30 (conservative). Miles 7-18: 9:05-9:15 (lock in). Miles 19-22: hold form. Miles 23-26.2: whatever you have left.' },
+}
+
+// ── Core functions (same signature as before) ──
+
+function findPhase(dateStr: string): Phase | null {
+  for (const phase of PHASES) {
+    if (dateStr >= phase.start && dateStr <= phase.end) return phase
+  }
+  return null
+}
+
+function dayOfWeek(dateStr: string): number {
+  const d = new Date(dateStr + 'T12:00:00')
+  // Convert JS day (0=Sun) to our format (0=Mon)
+  const jsDay = d.getDay()
+  return jsDay === 0 ? 6 : jsDay - 1
+}
+
 export function getRunWorkout(dateStr: string): RunWorkout | null {
-  const date = new Date(dateStr + 'T12:00:00')
-  const diffDays = Math.floor((date.getTime() - PLAN_START.getTime()) / 86400000)
-  
-  if (diffDays < 0 || diffDays >= 38 * 7) return null
-  
-  const week = Math.floor(diffDays / 7) + 1 // 1-indexed
-  const dayOfWeek = diffDays % 7 // 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
-  
-  const workout = PLAN[week]?.[dayOfWeek]
-  return workout || null
+  // Date-specific overrides take priority
+  if (DATE_WORKOUTS[dateStr]) return DATE_WORKOUTS[dateStr]
+
+  // Fall back to phase template
+  const phase = findPhase(dateStr)
+  if (!phase) return null
+
+  const dow = dayOfWeek(dateStr)
+  return phase.template[dow] || null
 }
 
-export function getWeekInfo(dateStr: string): { week: number; phase: string; mileage: string } | null {
-  const date = new Date(dateStr + 'T12:00:00')
-  const diffDays = Math.floor((date.getTime() - PLAN_START.getTime()) / 86400000)
-  if (diffDays < 0 || diffDays >= 38 * 7) return null
-  const week = Math.floor(diffDays / 7) + 1
-  return WEEK_META[week] || null
-}
+export function getWeekInfo(dateStr: string): { week: number; phase: string; mileage: string; event: 'pc100' | 'marathon' } | null {
+  const phase = findPhase(dateStr)
+  if (!phase) return null
 
-const WEEK_META: Record<number, { week: number; phase: string; mileage: string }> = {
-  1: { week: 1, phase: 'Base Building', mileage: '~15 mi' },
-  2: { week: 2, phase: 'Base Building', mileage: '~16 mi' },
-  3: { week: 3, phase: 'Base Building', mileage: '~18 mi' },
-  4: { week: 4, phase: 'Base Building (Recovery)', mileage: '~15 mi' },
-  5: { week: 5, phase: 'Base Building', mileage: '~20 mi' },
-  6: { week: 6, phase: 'Base Building', mileage: '~22 mi' },
-  7: { week: 7, phase: 'Base Building', mileage: '~24 mi' },
-  8: { week: 8, phase: 'Base Building (Recovery)', mileage: '~20 mi' },
-  9: { week: 9, phase: 'Aerobic Dev', mileage: '~26 mi' },
-  10: { week: 10, phase: 'Aerobic Dev', mileage: '~28 mi' },
-  11: { week: 11, phase: 'Aerobic Dev', mileage: '~30 mi' },
-  12: { week: 12, phase: 'Aerobic Dev (Recovery)', mileage: '~24 mi' },
-  13: { week: 13, phase: 'Aerobic Dev', mileage: '~32 mi' },
-  14: { week: 14, phase: 'Aerobic Dev', mileage: '~33 mi' },
-  15: { week: 15, phase: 'Aerobic Dev', mileage: '~35 mi' },
-  16: { week: 16, phase: 'Aerobic Dev (Recovery)', mileage: '~27 mi' },
-  17: { week: 17, phase: 'Marathon Specific', mileage: '~35 mi' },
-  18: { week: 18, phase: 'Marathon Specific', mileage: '~37 mi' },
-  19: { week: 19, phase: 'Marathon Specific', mileage: '~38 mi' },
-  20: { week: 20, phase: 'Marathon Specific (Recovery)', mileage: '~30 mi' },
-  21: { week: 21, phase: 'Marathon Specific', mileage: '~40 mi' },
-  22: { week: 22, phase: 'Marathon Specific', mileage: '~40 mi' },
-  23: { week: 23, phase: 'Marathon Specific', mileage: '~42 mi' },
-  24: { week: 24, phase: 'Marathon Specific (Recovery)', mileage: '~30 mi' },
-  25: { week: 25, phase: 'Peak Training', mileage: '~43 mi' },
-  26: { week: 26, phase: 'Peak Training', mileage: '~38 mi' },
-  27: { week: 27, phase: 'Peak Training', mileage: '~43 mi' },
-  28: { week: 28, phase: 'Peak Training (Recovery)', mileage: '~33 mi' },
-  29: { week: 29, phase: 'Peak Training', mileage: '~44 mi' },
-  30: { week: 30, phase: 'Peak Training', mileage: '~38 mi' },
-  31: { week: 31, phase: 'Peak Training', mileage: '~40 mi' },
-  32: { week: 32, phase: 'Peak Training', mileage: '~35 mi' },
-  33: { week: 33, phase: 'Peak Training', mileage: '~32 mi' },
-  34: { week: 34, phase: 'Taper', mileage: '~28 mi' },
-  35: { week: 35, phase: 'Taper', mileage: '~24 mi' },
-  36: { week: 36, phase: 'Taper', mileage: '~20 mi' },
-  37: { week: 37, phase: 'Taper', mileage: '~15 mi' },
-  38: { week: 38, phase: 'RACE WEEK', mileage: '~30 mi (inc. race)' },
-}
+  // Calculate week number within the phase
+  const start = new Date(phase.start + 'T12:00:00')
+  const current = new Date(dateStr + 'T12:00:00')
+  const diffDays = Math.floor((current.getTime() - start.getTime()) / 86400000)
+  const weekInPhase = Math.floor(diffDays / 7) + 1
 
-// PLAN[week][dayOfWeek] — dayOfWeek: 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
-const PLAN: Record<number, Record<number, RunWorkout>> = {
-  // ─── WEEK 1: Feb 3-9 ───
-  1: {
-    0: { type: 'easy', title: '🏃 3mi easy (10:30-11:00/mi)', notes: 'Conversational pace' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 2mi easy shakeout', notes: 'Run AM, lift PM or vice versa' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling', notes: 'Cross-training' },
-    3: { type: 'easy', title: '🏃 3mi easy (10:30-11:00/mi)', notes: 'Focus on relaxed form' },
-    4: { type: 'rest', title: '😴 Rest or 20-min walk', notes: 'Recovery day' },
-    5: { type: 'long', title: '🏃‍♂️ 5mi long run easy (11:00/mi)', notes: 'First long run baseline' },
-    6: { type: 'ma', title: '🥊 MA/wrestling OR easy 2mi walk', notes: 'Active recovery' },
-  },
-  // ─── WEEK 2: Feb 10-16 ───
-  2: {
-    0: { type: 'easy', title: '🏃 3mi easy (10:30-11:00/mi)', notes: 'Smooth and relaxed' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 2mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'easy', title: '🏃 3.5mi easy', notes: 'Slight increase' },
-    4: { type: 'rest', title: '😴 Rest or walk' },
-    5: { type: 'long', title: '🏃‍♂️ 5.5mi long run (10:45-11:00/mi)', notes: 'Build gradually' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or rest' },
-  },
-  // ─── WEEK 3: Feb 17-23 ───
-  3: {
-    0: { type: 'easy', title: '🏃 3.5mi easy' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 2mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling', notes: 'Moderate intensity' },
-    3: { type: 'easy', title: '🏃 4mi easy (10:30/mi)', notes: 'Building volume' },
-    4: { type: 'cross', title: '🧘 30-min walk or light yoga/stretch', notes: 'Active recovery' },
-    5: { type: 'long', title: '🏃‍♂️ 6.5mi long run (10:45-11:00/mi)', notes: 'Longest run so far' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or rest' },
-  },
-  // ─── WEEK 4: Feb 24-Mar 1 (RECOVERY) ───
-  4: {
-    0: { type: 'easy', title: '🏃 3mi easy', notes: 'Recovery week — reduce 15-20%' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 2mi easy' },
-    2: { type: 'ma', title: '🥊 MA/wrestling (lighter)', notes: 'Reduce intensity' },
-    3: { type: 'easy', title: '🏃 3mi easy' },
-    4: { type: 'rest', title: '😴 Full rest', notes: 'Let body adapt' },
-    5: { type: 'long', title: '🏃‍♂️ 5mi easy', notes: 'Shorter recovery long run' },
-    6: { type: 'rest', title: '😴 Rest or easy walk', notes: 'Full recovery' },
-  },
-  // ─── WEEK 5: Mar 2-8 ───
-  5: {
-    0: { type: 'easy', title: '🏃 4mi easy (10:15-10:30/mi)', notes: 'Pace improving naturally' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 2mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'easy', title: '🏃 4mi easy + 4x20s strides', notes: 'First strides!' },
-    4: { type: 'rest', title: '😴 Rest or walk' },
-    5: { type: 'long', title: '🏃‍♂️ 7mi long run (10:30-10:45/mi)', notes: 'Push long run up' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or easy 3mi', notes: 'Optional double' },
-  },
-  // ─── WEEK 6: Mar 9-15 ───
-  6: {
-    0: { type: 'easy', title: '🏃 4mi easy + 4x20s strides' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 2.5mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'easy', title: '🏃 4.5mi easy + 6x20s strides' },
-    4: { type: 'rest', title: '😴 Rest or 20-min walk' },
-    5: { type: 'long', title: '🏃‍♂️ 8mi long run (10:30-10:45/mi)', notes: 'Comfortable endurance' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or rest' },
-  },
-  // ─── WEEK 7: Mar 16-22 ───
-  7: {
-    0: { type: 'easy', title: '🏃 4.5mi easy + 6x20s strides' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'easy', title: '🏃 4.5mi easy' },
-    4: { type: 'cross', title: '🧘 30-min walk or light stretching' },
-    5: { type: 'long', title: '🏃‍♂️ 9mi long run (10:15-10:30/mi)', notes: 'Single digits done!' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or easy walk' },
-  },
-  // ─── WEEK 8: Mar 23-29 (RECOVERY) ───
-  8: {
-    0: { type: 'easy', title: '🏃 3.5mi easy', notes: 'Recovery week' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 2mi easy' },
-    2: { type: 'ma', title: '🥊 MA/wrestling (lighter)' },
-    3: { type: 'easy', title: '🏃 3.5mi easy', notes: 'Test: run a timed 5K this week' },
-    4: { type: 'rest', title: '😴 Full rest' },
-    5: { type: 'long', title: '🏃‍♂️ 7mi easy', notes: 'Recovery long run' },
-    6: { type: 'rest', title: '😴 Rest', notes: 'Prepare for Phase 2' },
-  },
-  // ─── WEEK 9: Mar 30-Apr 5 (AEROBIC DEV) ───
-  9: {
-    0: { type: 'easy', title: '🏃 4.5mi easy (10:00-10:15/mi)', notes: 'Pace dropping naturally' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'tempo', title: '⚡ 5mi: 1mi warm, 3mi @ 9:30/mi, 1mi cool', notes: 'First tempo! Controlled effort' },
-    4: { type: 'rest', title: '😴 Rest or walk' },
-    5: { type: 'long', title: '🏃‍♂️ 10mi long run (10:15-10:30/mi)', notes: 'Double digits! 🎉' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or easy 2mi' },
-  },
-  // ─── WEEK 10: Apr 6-12 ───
-  10: {
-    0: { type: 'easy', title: '🏃 5mi easy + 6x20s strides' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'tempo', title: '⚡ 5.5mi: 1mi warm, 3.5mi @ 9:20-9:30/mi, 1mi cool', notes: 'Tempo getting longer' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 10.5mi long run (10:15/mi)', notes: 'Steady and comfortable' },
-    6: { type: 'cross', title: '🥊 MA/wrestling or 30-min easy walk' },
-  },
-  // ─── WEEK 11: Apr 13-19 ───
-  11: {
-    0: { type: 'easy', title: '🏃 5mi easy' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'tempo', title: '⚡ 6mi: 1mi warm, 4mi @ 9:15-9:30/mi, 1mi cool', notes: 'Building tempo duration' },
-    4: { type: 'rest', title: '😴 Rest or walk' },
-    5: { type: 'long', title: '🏃‍♂️ 12mi long run (10:15-10:30/mi)', notes: 'Half marathon distance soon' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or rest' },
-  },
-  // ─── WEEK 12: Apr 20-26 (RECOVERY) ───
-  12: {
-    0: { type: 'easy', title: '🏃 4mi easy', notes: 'Recovery week' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 2mi easy' },
-    2: { type: 'ma', title: '🥊 MA/wrestling (lighter)' },
-    3: { type: 'easy', title: '🏃 4mi easy + strides', notes: 'No tempo this week' },
-    4: { type: 'rest', title: '😴 Full rest' },
-    5: { type: 'long', title: '🏃‍♂️ 9mi easy', notes: 'Shorter recovery long run' },
-    6: { type: 'rest', title: '😴 Rest' },
-  },
-  // ─── WEEK 13: Apr 27-May 3 ───
-  13: {
-    0: { type: 'easy', title: '🏃 5mi easy (9:45-10:00/mi)', notes: 'Fitness building' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'intervals', title: '🔥 6mi: 1.5 warm, 6x800m @ 8:30/mi (90s jog), 1.5 cool', notes: 'First speed work!' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 13.1mi half marathon test! (10:00-10:15/mi)', notes: 'Time yourself! 🏅' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or easy walk', notes: 'Easy after long run' },
-  },
-  // ─── WEEK 14: May 4-10 ───
-  14: {
-    0: { type: 'easy', title: '🏃 5mi easy' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'tempo', title: '⚡ 7mi: 1.5 warm, 4mi @ 9:10-9:20/mi, 1.5 cool', notes: 'Sub-4 pace is 9:09' },
-    4: { type: 'rest', title: '😴 Rest or walk' },
-    5: { type: 'long', title: '🏃‍♂️ 14mi long run (10:00-10:15/mi)', notes: 'New long run PR' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or rest' },
-  },
-  // ─── WEEK 15: May 11-17 ───
-  15: {
-    0: { type: 'easy', title: '🏃 5mi easy + strides' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'intervals', title: '🔥 7mi: 1.5 warm, 5x1000m @ 8:20-8:30/mi (2min jog), 1.5 cool', notes: 'Building speed endurance' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 15mi long run (10:00-10:15/mi)', notes: 'Keep it conversational' },
-    6: { type: 'cross', title: '🥊 MA/wrestling or easy 30-min walk' },
-  },
-  // ─── WEEK 16: May 18-24 (RECOVERY) ───
-  16: {
-    0: { type: 'easy', title: '🏃 4mi easy', notes: 'Recovery week' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 2mi easy' },
-    2: { type: 'ma', title: '🥊 MA/wrestling (lighter)' },
-    3: { type: 'easy', title: '🏃 4mi easy + 8x20s strides' },
-    4: { type: 'rest', title: '😴 Full rest' },
-    5: { type: 'long', title: '🏃‍♂️ 10mi easy', notes: 'Easy recovery long run' },
-    6: { type: 'rest', title: '😴 Rest', notes: 'Prep for Phase 3' },
-  },
-  // ─── WEEK 17: May 25-31 (MARATHON SPECIFIC) ───
-  17: {
-    0: { type: 'easy', title: '🏃 5mi easy (9:45-10:00/mi)' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'mp', title: '🎯 8mi: 2 warm, 4mi @ 9:05-9:10/mi (MP), 2 cool', notes: 'Marathon pace practice!' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 14mi: 12 easy + last 2 @ 9:30/mi', notes: 'Finish faster (negative split)' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or easy walk' },
-  },
-  // ─── WEEK 18: Jun 1-7 ───
-  18: {
-    0: { type: 'easy', title: '🏃 5mi easy' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'tempo', title: '⚡ 8mi: 1.5 warm, 5mi @ 9:00-9:10/mi, 1.5 cool', notes: 'Sustaining MP effort' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 16mi long run (9:50-10:10/mi)', notes: 'Practice race nutrition' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or rest' },
-  },
-  // ─── WEEK 19: Jun 8-14 ───
-  19: {
-    0: { type: 'easy', title: '🏃 5mi easy + strides' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'intervals', title: '🔥 8mi: 2 warm, 3x1600m @ 8:15-8:30/mi (2min jog), 2 cool', notes: 'Mile repeats!' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 17mi: 14 easy + last 3 @ 9:10-9:20/mi', notes: 'MP finish practice' },
-    6: { type: 'cross', title: '🧘 Easy walk or light MA' },
-  },
-  // ─── WEEK 20: Jun 15-21 (RECOVERY) ───
-  20: {
-    0: { type: 'easy', title: '🏃 4mi easy', notes: 'Recovery week' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 2mi easy' },
-    2: { type: 'ma', title: '🥊 MA/wrestling (lighter)' },
-    3: { type: 'easy', title: '🏃 5mi easy + strides', notes: 'No hard workout' },
-    4: { type: 'rest', title: '😴 Full rest' },
-    5: { type: 'long', title: '🏃‍♂️ 12mi easy', notes: 'Recovery long run' },
-    6: { type: 'rest', title: '😴 Rest' },
-  },
-  // ─── WEEK 21: Jun 22-28 ───
-  21: {
-    0: { type: 'easy', title: '🏃 5mi easy (9:30-9:45/mi)', notes: 'Pace improving' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'mp', title: '🎯 9mi: 2 warm, 5mi @ 9:00-9:09/mi, 2 cool', notes: 'Full marathon pace' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 18mi: 15 easy + last 3 @ 9:10/mi', notes: 'Longest run yet! Fuel every 45min' },
-    6: { type: 'ma', title: '🥊 MA/wrestling (light) or rest' },
-  },
-  // ─── WEEK 22: Jun 29-Jul 5 ───
-  22: {
-    0: { type: 'easy', title: '🏃 5.5mi easy' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'tempo', title: '⚡ 9mi: 2 warm, 5mi @ 8:50-9:05/mi, 2 cool', notes: 'Pushing sub-9 efforts' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 16mi easy (9:50-10:00/mi)', notes: 'Back off after 18' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or easy walk' },
-  },
-  // ─── WEEK 23: Jul 6-12 ───
-  23: {
-    0: { type: 'easy', title: '🏃 5.5mi easy' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'intervals', title: '🔥 9mi: 2 warm, 4x1600m @ 8:10-8:25/mi (2min jog), 2 cool', notes: 'Building top-end speed' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 19mi: 16 easy + last 3 @ 9:00-9:10/mi', notes: 'Near-peak long run' },
-    6: { type: 'cross', title: '🧘 Easy walk or light stretching', notes: 'Big week — recover' },
-  },
-  // ─── WEEK 24: Jul 13-19 (RECOVERY) ───
-  24: {
-    0: { type: 'easy', title: '🏃 4mi easy', notes: 'Recovery week' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 2mi easy' },
-    2: { type: 'ma', title: '🥊 MA/wrestling (lighter)' },
-    3: { type: 'easy', title: '🏃 5mi easy + strides' },
-    4: { type: 'rest', title: '😴 Full rest' },
-    5: { type: 'long', title: '🏃‍♂️ 12mi easy', notes: 'Easy week before peak' },
-    6: { type: 'rest', title: '😴 Rest' },
-  },
-  // ─── WEEK 25: Jul 20-26 (PEAK) ───
-  25: {
-    0: { type: 'easy', title: '🏃 6mi easy (9:30-9:45/mi)', notes: 'Peak block begins' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy', notes: 'Consider reducing lift intensity' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'mp', title: '🎯 10mi: 2 warm, 6mi @ 8:55-9:09/mi, 2 cool', notes: 'Race pace confidence builder' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 20mi: 17 easy + last 3 @ 9:00-9:10/mi', notes: 'THE 20-MILER! Rehearse race fuel 🏅' },
-    6: { type: 'rest', title: '😴 Full rest — you earned it' },
-  },
-  // ─── WEEK 26: Jul 27-Aug 2 ───
-  26: {
-    0: { type: 'easy', title: '🏃 5mi easy', notes: 'Recover from 20-miler' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT (lighter) + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'tempo', title: '⚡ 8mi: 2 warm, 4mi @ 8:50-9:00/mi, 2 cool' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 15mi easy (9:45-10:00/mi)', notes: 'Lighter long run after 20' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or walk' },
-  },
-  // ─── WEEK 27: Aug 3-9 ───
-  27: {
-    0: { type: 'easy', title: '🏃 6mi easy' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'intervals', title: '🔥 9mi: 2 warm, 6x1000m @ 8:10-8:20/mi (90s jog), 2 cool', notes: 'Sharp speed session' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 18mi: 14 easy + last 4 @ 9:00-9:10/mi', notes: 'MP finish — race simulation' },
-    6: { type: 'cross', title: '🧘 Easy walk only' },
-  },
-  // ─── WEEK 28: Aug 10-16 (RECOVERY) ───
-  28: {
-    0: { type: 'easy', title: '🏃 4mi easy', notes: 'Recovery week' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 2mi easy' },
-    2: { type: 'ma', title: '🥊 MA/wrestling (lighter)' },
-    3: { type: 'mp', title: '🎯 7mi: 1.5 warm, 4mi @ 9:00-9:09/mi, 1.5 cool', notes: 'Keep legs turning' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 12mi easy' },
-    6: { type: 'rest', title: '😴 Rest' },
-  },
-  // ─── WEEK 29: Aug 17-23 ───
-  29: {
-    0: { type: 'easy', title: '🏃 6mi easy (9:20-9:40/mi)', notes: 'Final big push' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'mp', title: '🎯 10mi: 2 warm, 6mi @ 8:50-9:05/mi, 2 cool', notes: 'Sub-9 pace feels manageable now' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 20mi: 16 easy + last 4 @ 9:00-9:10/mi', notes: 'FINAL 20-MILER. Full race rehearsal 🏅' },
-    6: { type: 'rest', title: '😴 Full rest', notes: 'Last big effort done!' },
-  },
-  // ─── WEEK 30: Aug 24-30 ───
-  30: {
-    0: { type: 'easy', title: '🏃 5mi easy', notes: 'Recover from 20' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'tempo', title: '⚡ 8mi: 2 warm, 4mi @ 8:50-9:00/mi, 2 cool' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 16mi easy (9:40-10:00/mi)', notes: 'Last long one before taper' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or walk' },
-  },
-  // ─── WEEK 31: Aug 31-Sep 6 ───
-  31: {
-    0: { type: 'easy', title: '🏃 5.5mi easy' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'intervals', title: '🔥 8mi: 2 warm, 5x1000m @ 8:00-8:15/mi (2min jog), 2 cool', notes: 'Sharp speed' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 16mi: 12 easy + last 4 @ 9:00-9:10/mi', notes: 'MP finish' },
-    6: { type: 'cross', title: '🧘 Easy walk' },
-  },
-  // ─── WEEK 32: Sep 7-13 ───
-  32: {
-    0: { type: 'easy', title: '🏃 5mi easy', notes: 'Starting to wind down' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'mp', title: '🎯 8mi: 2 warm, 4mi @ 8:55-9:05/mi, 2 cool', notes: 'Race pace feels smooth' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 14mi easy (9:40-9:50/mi)', notes: 'Winding down long runs' },
-    6: { type: 'ma', title: '🥊 MA/wrestling or rest' },
-  },
-  // ─── WEEK 33: Sep 14-20 ───
-  33: {
-    0: { type: 'easy', title: '🏃 5mi easy' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT + 3mi easy', notes: 'Last full strength session' },
-    2: { type: 'ma', title: '🥊 Martial arts/wrestling' },
-    3: { type: 'tempo', title: '⚡ 7mi: 1.5 warm, 4mi @ 8:50-9:00/mi, 1.5 cool', notes: 'Last hard tempo' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 12mi: 10 easy + 2 @ MP', notes: 'Taper long runs begin' },
-    6: { type: 'rest', title: '😴 Rest' },
-  },
-  // ─── WEEK 34: Sep 21-27 (TAPER) ───
-  34: {
-    0: { type: 'easy', title: '🏃 5mi easy (9:20-9:30/mi)', notes: 'Taper begins — volume dropping' },
-    1: { type: 'strength', title: '🏋️ Mentzer HIT (lighter) + 2mi easy', notes: 'Reduce weights 20%' },
-    2: { type: 'ma', title: '🥊 MA/wrestling (reduced intensity)' },
-    3: { type: 'mp', title: '🎯 7mi: 1.5 warm, 3mi @ 9:00-9:09/mi, 1.5 cool + strides', notes: 'Stay sharp at MP' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 10mi easy (9:30-9:45/mi)', notes: 'Shorter but comfortable' },
-    6: { type: 'rest', title: '😴 Rest or light walk' },
-  },
-  // ─── WEEK 35: Sep 28-Oct 4 ───
-  35: {
-    0: { type: 'easy', title: '🏃 4mi easy + 6x20s strides', notes: 'Legs feeling springy' },
-    1: { type: 'strength', title: '🏋️ Light maintenance lift + 2mi easy', notes: 'Bodyweight or 50% weight' },
-    2: { type: 'ma', title: '🥊 MA/wrestling (light — technique only)', notes: 'No hard sparring' },
-    3: { type: 'mp', title: '🎯 6mi: 1.5 warm, 2mi @ 8:55-9:05/mi, 1.5 cool + strides', notes: 'Short and sharp' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'long', title: '🏃‍♂️ 8mi easy (9:30-9:45/mi)', notes: 'Last double-digit weekend' },
-    6: { type: 'rest', title: '😴 Rest' },
-  },
-  // ─── WEEK 36: Oct 5-11 ───
-  36: {
-    0: { type: 'easy', title: '🏃 4mi easy + strides' },
-    1: { type: 'strength', title: '🏋️ Very light maintenance + 2mi easy', notes: 'Last lift before race' },
-    2: { type: 'ma', title: '🥊 Light MA technique or rest', notes: 'Nothing strenuous' },
-    3: { type: 'mp', title: '🎯 5mi: 1 warm, 2mi @ 9:00/mi, 1 cool + strides', notes: 'Stay locked in at MP' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'easy', title: '🏃 5mi easy (9:30/mi)', notes: 'Last real run before race week' },
-    6: { type: 'rest', title: '😴 Rest or easy walk' },
-  },
-  // ─── WEEK 37: Oct 12-18 ───
-  37: {
-    0: { type: 'easy', title: '🏃 3mi easy + 4x20s strides', notes: 'Race week prep' },
-    1: { type: 'rest', title: '😴 Rest or 20-min walk', notes: 'No strength this week' },
-    2: { type: 'easy', title: '🏃 3mi easy + 4x strides', notes: 'Shake out legs' },
-    3: { type: 'mp', title: '🎯 4mi: 1 warm, 2mi @ 9:00/mi, 1 cool', notes: 'Last MP check-in' },
-    4: { type: 'rest', title: '😴 Rest' },
-    5: { type: 'easy', title: '🏃 3mi easy + strides', notes: 'Short and smooth' },
-    6: { type: 'rest', title: '😴 Full rest', notes: 'Legs loading up' },
-  },
-  // ─── WEEK 38: Oct 19-26 (RACE WEEK) ───
-  38: {
-    0: { type: 'easy', title: '🏃 2mi very easy + 4 strides', notes: 'Stay loose' },
-    1: { type: 'easy', title: '🏃 2mi very easy', notes: 'Trust your training' },
-    2: { type: 'rest', title: '😴 Full rest', notes: 'Carb loading begins' },
-    3: { type: 'easy', title: '🏃 2mi easy + 4 strides', notes: 'Last shakeout run' },
-    4: { type: 'rest', title: '😴 Full rest', notes: 'Lay out race kit tonight' },
-    5: { type: 'rest', title: '😴 Full rest. Eat well. Sleep early.', notes: 'Pre-race: pasta/rice dinner' },
-    6: { type: 'race', title: '🏁 NIAGARA FALLS MARATHON — SUB-4:00 GO TIME!', notes: 'Goal: 9:09/mi pace. You trained 38 weeks for this. GO GET IT! 🏅' },
-  },
+  return {
+    week: weekInPhase,
+    phase: phase.phase,
+    mileage: phase.mileage,
+    event: phase.event,
+  }
 }

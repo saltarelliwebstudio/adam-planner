@@ -37,14 +37,16 @@ export default function WhatNext() {
     const todayTasks = tasks.filter(t => t.scheduledDate === todayDate && t.status !== 'done')
     const overdue = tasks.filter(t => t.scheduledDate < todayDate && t.status !== 'done')
     const now = new Date()
-    const currentHour = now.getHours()
+    const toronto = new Date(now.toLocaleString('en-US', { timeZone: 'America/Toronto' }))
+    const currentHour = toronto.getHours()
+    const currentMinute = toronto.getMinutes()
 
     const dayOfWeek = new Date(todayDate + 'T12:00:00').getDay()
     const blocks = getBlocksForDay(dayOfWeek)
     const currentBlock = blocks.find(b => {
       const [sh, sm] = b.start.split(':').map(Number)
       const [eh, em] = b.end.split(':').map(Number)
-      const mins = currentHour * 60 + now.getMinutes()
+      const mins = currentHour * 60 + currentMinute
       return mins >= sh * 60 + sm && mins < eh * 60 + em
     })
 
@@ -54,7 +56,7 @@ export default function WhatNext() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           today: todayDate,
-          currentTime: `${currentHour}:${now.getMinutes().toString().padStart(2, '0')}`,
+          currentTime: `${currentHour}:${currentMinute.toString().padStart(2, '0')}`,
           currentBlock: currentBlock ? { label: currentBlock.label, locked: currentBlock.locked, end: currentBlock.end } : null,
           todayTasks: todayTasks.map(t => ({ title: t.title, priority: t.priority, category: t.category, scheduledTime: t.scheduledTime })),
           overdueTasks: overdue.map(t => ({ title: t.title, priority: t.priority, scheduledDate: t.scheduledDate })),

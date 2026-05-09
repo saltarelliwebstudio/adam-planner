@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Task } from '@/lib/types'
-import { getBlocksForDay, getFreeHours, DAY_NAMES } from '@/lib/schedule'
+import { getBlocksForDay, getFreeHours, getResolvedSchedule, DAY_NAMES } from '@/lib/schedule'
 import { today, getWeekStart, addTask, generateRecurringTasksForRange } from '@/lib/store'
 
 function cn(...c: (string | false | undefined)[]) { return c.filter(Boolean).join(' ') }
@@ -51,8 +51,8 @@ export default function WeekGrid({ tasks, onRefresh }: { tasks: Task[]; onRefres
       dayNum: dt.getDate(),
       isToday: dateStr === d,
       tasks: tasks.filter(t => t.scheduledDate === dateStr),
-      blocks: getBlocksForDay(dt.getDay()),
-      freeHrs: getFreeHours(dt.getDay()),
+      blocks: getResolvedSchedule(dateStr),
+      freeHrs: getFreeHours(dateStr),
     }
   })
 
