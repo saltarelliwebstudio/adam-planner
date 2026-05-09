@@ -18,6 +18,19 @@ let recurringCacheLoaded = false
 const inflightTaskIds = new Set<string>()
 const inflightIceboxIds = new Set<string>()
 
+// ── Sequence guards — discard stale concurrent loadX() responses ──
+let loadTasksSeq = 0
+let loadIceboxSeq = 0
+
+// ── Retry helper: one retry after 2s for transient network failures ──
+// Accepts any thenable that resolves to { error } — Supabase query builders qualify.
+async function withRetry<T extends { error: unknown }>(op: () => PromiseLike<T>): Promise<T> {
+  const first = await op()
+  if (!first.error) return first
+  await new Promise(r => setTimeout(r, 2000))
+  return await op()
+}
+
 // ── Pub-sub (drives UI re-renders on cache changes from any source) ──
 type Subscriber = () => void
 const subscribers = new Set<Subscriber>()
@@ -104,34 +117,37 @@ export function subscribeRealtime(): () => void {
 }
 
 async function loadTasks(): Promise<void> {
+  const seq = ++loadTasksSeq
   const { data } = await supabase
     .from('planner_tasks')
     .select('*')
     .order('created_at', { ascending: true })
+  // A newer load started while we were waiting — drop this stale response
+  if (seq !== loadTasksSeq) return
   if (data) {
-    const serverIds = new Set(data.map((r: { id: string }) => r.id))
-    // Preserve optimistic local rows whose insert hasn't committed yet
-    const optimisticOnly = tasksCache.filter(t => inflightTaskIds.has(t.id) && !serverIds.has(t.id))
-    tasksCache = [...data.map(rowToTask), ...optimisticOnly]
+    // Hold any inflight row (insert OR update) until its mutation settles —
+    // server data may not yet reflect the optimistic change.
+    const serverRows = data.map(rowToTask).filter(t => !inflightTaskIds.has(t.id))
+    const optimisticRows = tasksCache.filter(t => inflightTaskIds.has(t.id))
+    tasksCache = [...serverRows, ...optimisticRows]
     tasksCacheLoaded = true
   }
 }
 
 async function loadIcebox(): Promise<void> {
+  const seq = ++loadIceboxSeq
   const { data } = await supabase
     .from('planner_icebox')
     .select('*')
     .order('created_at', { ascending: false })
+  if (seq !== loadIceboxSeq) return
   if (data) {
-    const serverIds = new Set(data.map((r: { id: string }) => r.id))
-    const optimisticOnly = iceboxCache.filter(i => inflightIceboxIds.has(i.id) && !serverIds.has(i.id))
-    // Filter out internal metadata entries (reminders + bot context)
-    iceboxCache = [
-      ...data
-        .filter(r => !r.text.startsWith('REM|') && !r.text.startsWith('CTX|'))
-        .map(r => ({ id: r.id, text: r.text, createdAt: r.created_at })),
-      ...optimisticOnly,
-    ]
+    const serverRows = data
+      .filter(r => !r.text.startsWith('REM|') && !r.text.startsWith('CTX|'))
+      .filter(r => !inflightIceboxIds.has(r.id))
+      .map(r => ({ id: r.id, text: r.text, createdAt: r.created_at }))
+    const optimisticRows = iceboxCache.filter(i => inflightIceboxIds.has(i.id))
+    iceboxCache = [...serverRows, ...optimisticRows]
     iceboxCacheLoaded = true
   }
 }
@@ -189,18 +205,18 @@ export function saveTasks(tasks: Task[]) {
   const prev = tasksCache
   tasksCache = tasks
   notifySubscribers()
-  // Reconcile deletes against server with rollback on failure
   const newIds = new Set(tasks.map(t => t.id))
   const toDelete = prev.filter(t => !newIds.has(t.id))
   if (toDelete.length === 0) return
   ;(async () => {
     const failed: Task[] = []
     for (const t of toDelete) {
-      const { error } = await supabase.from('planner_tasks').delete().eq('id', t.id)
+      const { error } = await withRetry(() =>
+        supabase.from('planner_tasks').delete().eq('id', t.id)
+      )
       if (error) failed.push(t)
     }
     if (failed.length > 0) {
-      // Restore failed deletions
       tasksCache = [...tasksCache, ...failed]
       toast.error(`Couldn't delete ${failed.length} task${failed.length > 1 ? 's' : ''} — check connection`)
       notifySubscribers()
@@ -218,7 +234,11 @@ export function addTask(task: Omit<Task, 'id' | 'createdAt'>): Task {
   inflightTaskIds.add(newTask.id)
   notifySubscribers()
   ;(async () => {
-    const { error } = await supabase.from('planner_tasks').insert(taskToRow(newTask))
+    // upsert (not insert) so the retry is idempotent if the first write
+    // landed on the server but the response was lost on a flaky connection.
+    const { error } = await withRetry(() =>
+      supabase.from('planner_tasks').upsert(taskToRow(newTask), { onConflict: 'id' })
+    )
     inflightTaskIds.delete(newTask.id)
     if (error) {
       tasksCache = tasksCache.filter(t => t.id !== newTask.id)
@@ -237,7 +257,9 @@ export function updateTask(id: string, updates: Partial<Task>) {
     inflightTaskIds.add(id)
     notifySubscribers()
     ;(async () => {
-      const { error } = await supabase.from('planner_tasks').update(taskToRow(updates)).eq('id', id)
+      const { error } = await withRetry(() =>
+        supabase.from('planner_tasks').update(taskToRow(updates)).eq('id', id)
+      )
       inflightTaskIds.delete(id)
       if (error) {
         const stillIdx = tasksCache.findIndex(t => t.id === id)
@@ -396,7 +418,9 @@ export function addToIcebox(text: string): IceboxIdea {
   inflightIceboxIds.add(idea.id)
   notifySubscribers()
   ;(async () => {
-    const { error } = await supabase.from('planner_icebox').insert({ id: idea.id, text })
+    const { error } = await withRetry(() =>
+      supabase.from('planner_icebox').upsert({ id: idea.id, text }, { onConflict: 'id' })
+    )
     inflightIceboxIds.delete(idea.id)
     if (error) {
       iceboxCache = iceboxCache.filter(i => i.id !== idea.id)
@@ -413,7 +437,9 @@ export function removeFromIcebox(id: string) {
   notifySubscribers()
   if (!removed) return
   ;(async () => {
-    const { error } = await supabase.from('planner_icebox').delete().eq('id', id)
+    const { error } = await withRetry(() =>
+      supabase.from('planner_icebox').delete().eq('id', id)
+    )
     if (error) {
       iceboxCache = [...iceboxCache, removed]
       toast.error('Failed to remove idea — check connection')
